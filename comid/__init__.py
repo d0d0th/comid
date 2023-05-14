@@ -63,15 +63,25 @@ class Comid:
                 my_dict = dict(map(lambda x: (x['id'], x), data))
                 self.posts.update(my_dict)
 
-    def generate_corpus(self, use_lemmas=True):
+    def generate_corpus(self, use_lemmas=True, include_comments = False):
         """
         Generates the corpus with the list of tokens from each document
         :param use_lemmas: If True will lemmatize the tokens, if false will stemm the tokens. The default is use_lemmas
             set as True
+        :param include_comments: Informs if will include te texts of the comments in document.
         :return: None
         """
         oc_dict = dict(filter(lambda e: 'parent_id' not in e[1] and e[1]['selftext'] not in ["[removed]", "[deleted]"],
                               tqdm(self.posts.items(), desc="Filtering content")))
+
+        if include_comments:
+            filtered_comments = dict(
+                filter(lambda e: 'parent_id' in e[1] and e[1]['parent_id'] in oc_dict.keys()
+                                 and e[1]['full_text'] not in ["[removed]", "[deleted]"],
+                       tqdm(self.posts.items(), desc="Filtering comments")))
+
+            for key in tqdm(filtered_comments.keys(), desc="Adding comments"):
+                oc_dict[filtered_comments[key]['parent_id']] ['full_text'] += " " + filtered_comments[key]['full_text']
 
         oc = list(
             map(lambda e: [e[0], rc.clean(e[1]['full_text'])], tqdm(oc_dict.items(), desc="Cleaning reddit marks")))
@@ -103,8 +113,8 @@ class Comid:
         post) and reduce the corpus removing all documents that not satisfact the minimal value calculated.
 
         :param target_size: The target corpus size.
-        :param optimize_num_interactions: If True reduce the corpus calculating a mínimal value for number of 
-        interactions (the total number of comments and replies in original post). If False reduce the corpus calculating 
+        :param optimize_num_interactions: If True reduce the corpus calculating a mínimal value for number of
+        interactions (the total number of comments and replies in original post). If False reduce the corpus calculating
         a mínimal value for op length (number of tokens in original post)
         :param min_op_length: The minimal op lenght (number of tokens in original post) to filter the corpus. Only have
         effect if optimize_num_interactions is True.
@@ -185,7 +195,7 @@ class Comid:
 
     def save_corpus(self, reduced=False, save_path="", file_name=""):
         """
-        Save the corpus as a json file.        
+        Save the corpus as a json file.
         :param reduced: If True will save the reduced corpus, if False will save the full corpus
         :param save_path: The path to save the corpus file. If not informed will be saved in current default path.
         :param file_name: The corpus file name. If not informed will generate a file with the pattern name
@@ -216,7 +226,7 @@ class Comid:
     def load_clusters_file(self, file):
         """
         Load the clusters file and create the df_cluster dataframe
-        :param file: The csv file path + name to be loaded. Can be used relative or full path. 
+        :param file: The csv file path + name to be loaded. Can be used relative or full path.
         :return:
         """
         self.df_clusters = pd.read_csv(file)
@@ -270,11 +280,11 @@ class Comid:
 
     def build_topics(self, topics_file=None, min_percent=10):
         """
-        Creates the topics conversation dataframe. The dataframe can be created from a csv file with the topics 
+        Creates the topics conversation dataframe. The dataframe can be created from a csv file with the topics
         anotation.
-        :param topics_file: The label csv file. When informed it will be considered only the topics that have informed 
+        :param topics_file: The label csv file. When informed it will be considered only the topics that have informed
         in file.
-        :param min_percent: The minimal percent of documents in a cluster to consider the cluster as a topic in 
+        :param min_percent: The minimal percent of documents in a cluster to consider the cluster as a topic in
         dataframe. If label file informed, this parameter will be ignored.
         :return: None
         """
