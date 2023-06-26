@@ -127,6 +127,105 @@ class RedditScraper:
 
         return ret
 
+    def downlad_by_datetime(self, subreddit, start_datetime, end_datetime=None,download_coments=True,
+                            output_folder=None, max_retries=50,after=None):
+        """
+        Download submissions in a datetime range
+        :param subreddit: The subreddit to download
+        :param start_datetime: The initial post datatime range (inclusive) to scrap
+        :param end_datetime: The initial final datatime range (not inclusive) to scrap. If not informed, will consider
+        the current datetime.
+        :param download_coments:  Informs if will download comments and replies. The default is True.
+         :param output_folder: The folder to save the submissions.
+        :param max_retries: The maximum number of retries to download if a connection error occurs.
+        :param after: If informed, will consider only de ids oldest from after.
+        :return:
+        """
+        if not end_datetime:
+            end_datetime =  dt.datetime.now()
+        start_utc = start_datetime.timestamp()
+        end_utc = end_datetime.timestamp()
+        start = dt.datetime.now()
+        stamp = str(round(dt.datetime.now().timestamp()))
+        file_submissions = "submissions_" + stamp + ".json"
+        file_comments = "comments_" + stamp + ".json"
+
+        if max_retries < 0:
+            raise Exception("max_retries cannot be negative")
+        reddit = praw.Reddit(
+            client_id=self.reddit_credentials['client_id'],
+            client_secret=self.reddit_credentials['client_secret'],
+            password=self.reddit_credentials['password'],
+            user_agent=self.reddit_credentials['user_agent'],
+            username=self.reddit_credentials['username']
+        )
+
+        if output_folder:
+            if os.path.exists(output_folder):
+                raise Exception("output path not exists")
+            file_submissions = os.path.join(output_folder, file_submissions)
+            file_comments = os.path.join(output_folder, file_comments)
+
+        print(reddit.user.me())
+        pbar = tqdm()
+
+        cont = True
+        params = {}
+        if after:
+            if not after.startswith('t3_'):
+                after += "t3_"+after
+            params = {'after' : after}
+        limit = 100
+        count_retry = 0
+        total = 0
+        while cont:
+            if count_retry > max_retries:
+                raise last_exception
+            try:
+                for submission in reddit.subreddit(subreddit).new(limit=limit, params=params):
+                    count_retry = 0
+                    params = {"after": submission.fullname}
+                    if int(submission.created) < int(start_utc):
+                        cont = False
+                        break
+                    if int(submission.created) > int(end_utc):
+                        pbar.set_description(f"Skiping {submission.id} out of range")
+                        pbar.update()
+                        continue
+                    doc = dict()
+                    total += 1
+                    pbar.set_description(f"Downloading O.C. {submission.id} Total {total}")
+                    pbar.update()
+                    for field in self.submission_fields:
+                        if field == 'author':
+                            doc[field] = str(submission.author) if hasattr(submission, 'comments') else None
+                        elif field == 'author_id':
+                            doc[field] = submission.author_fullname[3:] if hasattr(submission,
+                                                                                   'author_fullname') else None
+                        elif field == 'subreddit':
+                            doc[field] = str(submission.subreddit) if hasattr(submission, 'subreddit') else None
+                        else:
+                            doc[field] = getattr(submission, field, None)
+
+                    if download_coments:
+                        if hasattr(submission, 'comments'):
+                            submission.comments.replace_more(limit=None)
+                            doc['replies'] = self.__procReplies__(submission.comments, file_comments)
+                    self.__append_json_string__(file_submissions, json.dumps(doc))
+
+            except prawcore.exceptions.ServerError as e:
+                    # wait for 30 seconds since sending more requests to overloaded server
+                    last_exception = e
+                    print("Reddit server response error:", e.response.status_code)
+                    print("Waiting 30 seconds to retry the request")
+                    count_retry += 1
+                    time.sleep(30)
+                    print("Retrying downlaod submissions . Attempts retry count: ", count_retry)
+
+        print("Generated submissions file " + file_submissions)
+        print("Generated comments file " + file_comments)
+        print('Download completed. Started at ', start, 'finished at ', dt.datetime.now())
+
     def donwload_by_ids(self, download_coments=True, ids=None, output_folder=None, max_retries=50):
         """
         Download and sotrethe submissions by ids
