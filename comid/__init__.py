@@ -526,6 +526,22 @@ class Comid:
 
         return math.log10(p_topic / p_topic_all_periods)
 
+    def core_peripheral_orientation(self,period):
+        total_core = 0
+        total_peripheral = 0
+        df_filtered = self.df_periods[(self.df_periods['period'] == period) & (self.df_periods['replies'] > 0)]
+        if len(df_filtered) < 1:
+            raise Exception("Invalid period " + period)
+        for topic in df_filtered['topic'].unique().tolist():
+            if self.is_topic_core(topic,period):
+                total_core += df_filtered['replies'].sum()
+            else:
+                total_peripheral += df_filtered['replies'].sum()
+        return (total_core-total_peripheral)/(total_core+total_peripheral)
+
+    def is_topic_core(self, topic, period, threshold=0.05):
+        return abs(self.discrepancy_of_interactions(topic,period)) <= threshold
+
     def discrepancy_of_interactions(self, topic, period):
         df_filtered_topic = self.df_periods[self.df_periods['topic'] == topic]
         if len(df_filtered_topic) < 1:
