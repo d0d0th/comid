@@ -12,6 +12,9 @@ from nltk.stem.snowball import SnowballStemmer
 import csv
 import pandas as pd
 import pickle
+import numpy as np
+from itertools import chain
+import math
 
 
 class Comid:
@@ -20,6 +23,7 @@ class Comid:
     """
 
     def __init__(self):
+        self.words_map = None
         self.corpus = None
         self.corpus_reduced = None
         self.posts = None
@@ -63,7 +67,7 @@ class Comid:
                 my_dict = dict(map(lambda x: (x['id'], x), data))
                 self.posts.update(my_dict)
 
-    def generate_corpus(self, use_lemmas=True, include_comments = False):
+    def generate_corpus(self, use_lemmas=True, include_comments=False):
         """
         Generates the corpus with the list of tokens from each document
         :param use_lemmas: If True will lemmatize the tokens, if false will stemm the tokens. The default is use_lemmas
@@ -81,7 +85,7 @@ class Comid:
                        tqdm(self.posts.items(), desc="Filtering comments")))
 
             for key in tqdm(filtered_comments.keys(), desc="Adding comments"):
-                oc_dict[filtered_comments[key]['parent_id']] ['full_text'] += " " + filtered_comments[key]['full_text']
+                oc_dict[filtered_comments[key]['parent_id']]['full_text'] += " " + filtered_comments[key]['full_text']
 
         oc = list(
             map(lambda e: [e[0], rc.clean(e[1]['full_text'])], tqdm(oc_dict.items(), desc="Cleaning reddit marks")))
@@ -310,7 +314,7 @@ class Comid:
                     topics[row[0]] = row[0]
 
         data = []
-        for cluster in topics:
+        for cluster in tqdm(topics, desc="Building topics dataframe..."):
             docs = self.df_clusters[cluster]
             for doc in docs[docs.notnull()]:
                 post = self.posts[doc]
@@ -327,7 +331,8 @@ class Comid:
         self.df_topics = pd.DataFrame(data, columns=['id', 'topic', 'author_id', 'depth', 'parent_id', 'created_at',
                                                      'created_utc', 'fulltext', 'oc'])
         self.df_topics = self.df_topics.set_index('id')
-        # self.group_by_period(period_type)
+
+        return
 
     @staticmethod
     def _retrieve_period(timestamp, period_type):
@@ -349,7 +354,7 @@ class Comid:
         elif per == "y":
             period_key = dt.strftime('%Y')
         else:
-                period_key = None
+            period_key = None
         return period_key
 
     def group_by_period(self, period_type="m"):
@@ -371,18 +376,48 @@ class Comid:
         else:
             raise Exception("Parameter period invalid. Available options: 'd','w','m' or 'y'")
 
-        self.df_topics['period'] = self.df_topics['created_utc'].apply(lambda x: self._retrieve_period(x, period_type))
+        tqdm.pandas(desc="periods")
+        self.df_topics['period'] = self.df_topics['created_utc'].progress_apply(
+            lambda e: self._retrieve_period(e, period_type))
+        tqdm.pandas(desc="tokens")
+        self.df_topics['tokenized'] = self.df_topics.progress_apply(
+            lambda e: self.corpus[e.name] if e.name in self.corpus else [], axis=1)
         data = []
+
+        # x
+        self.words_idx = {word: i for i, word in enumerate(set(chain.from_iterable(self.corpus.values())))}
+        # Y
+        self.topics_idx = {topic: i for i, topic in
+                           enumerate(self.df_topics[~self.df_topics['topic'].isnull()]['topic'].unique().tolist())}
+        # Z
+        self.periods_idx = {period: i for i, period in enumerate(self.df_topics['period'].unique().tolist())}
+
+        self.periods_array = np.zeros((len(self.words_idx), len(self.topics_idx), len(self.periods_idx)), dtype=int)
+
         for period in tqdm(sorted(self.df_topics['period'].unique().tolist()), "Grouping by " + period_description):
             df_period = self.df_topics[self.df_topics['period'] == period]
+
+            '''
+            self.periods_counter[period] = [0, {}]
+            '''
+            z = self.periods_idx[period]
             for topic in df_period[~df_period['topic'].isnull()]['topic'].unique().tolist():
+
                 df_topic_period = df_period[df_period['topic'] == topic]
                 new_threads = df_topic_period[df_topic_period['depth'] == 0].shape[0]
                 replies = df_topic_period[df_topic_period['depth'] > 0].shape[0]
 
+                words_topic = df_topic_period.tokenized.explode().dropna().tolist()
+                y = self.topics_idx[topic]
+
+                for word in set(words_topic):
+                    x = self.words_idx[word]
+                    self.periods_array[x, y, z] += words_topic.count(word)
+
                 if per == "d":
                     data.append(
                         {
+                            "period": period,
                             "year": period[0:4],
                             "month": period[5:7],
                             "day": period[8:10],
@@ -394,6 +429,7 @@ class Comid:
                 elif per == "w":
                     data.append(
                         {
+                            "period": period,
                             "year": period[0:4],
                             "week": period[5:7],
                             "topic": topic,
@@ -404,6 +440,7 @@ class Comid:
                 elif per == "m":
                     data.append(
                         {
+                            "period": period,
                             "year": period[0:4],
                             "month": period[5:7],
                             "topic": topic,
@@ -414,15 +451,114 @@ class Comid:
                 elif per == "y":
                     data.append(
                         {
+                            "period": period,
                             "year": period,
                             "topic": topic,
                             "new_threads": new_threads,
                             "replies": replies
                         }
                     )
-
         self.df_periods = pd.DataFrame(data)
         return
+
+    def distinctiveness(self, topic, period):
+        z = self.periods_idx[period]
+        y = self.topics_idx[topic]
+        count = 0
+        sum_specificity = 0
+        for x in np.where(self.periods_array[:, y, z] > 0)[0]:
+            sum_specificity += self.specificty_by_index(x, y, z)
+            count += 1
+        if count == 0:
+            raise Exception("It isn't possible find the distinctiveness for topic " + topic + " at " + period)
+        return sum_specificity / count
+
+    def dynamicity(self, topic, period):
+        z = self.periods_idx[period]
+        y = self.topics_idx[topic]
+        count = 0
+        sum_volatility = 0
+        for x in np.where(self.periods_array[:, y, z] > 0)[0]:
+            sum_volatility += self.volatility_by_index(x, y, z)
+            count += 1
+        if count == 0:
+            raise Exception("It isn't possible find the dynamicity for topic " + topic + " at " + period)
+        return sum_volatility / count
+
+    def specificity(self, word, topic, period):
+        z = self.periods_idx[period]
+        y = self.topics_idx[topic]
+        x = self.words_idx[word]
+
+        return self.specificty_by_index(x, y, z)
+
+    def specificty_by_index(self, x, y, z):
+        a1 = self.periods_array[x, y, z]
+        b1 = self.periods_array[:, y, z].sum()
+        a2 = self.periods_array[x, :, z].sum()
+        b2 = self.periods_array[:, :, z].sum()
+        if 0 in (a1, b1, b2, b2):
+            raise Exception(
+                "It isn't possible find the specificity for (x, y, z) : (" + str(x) + ", " + str(y) + ", " + str(
+                    z) + ")")
+        p_topic = a1 / b1
+        p_all_topics = a2 / b2
+        return math.log10(p_topic / p_all_topics)
+
+    def volatility(self, word, topic, period):
+        z = self.periods_idx[period]
+        y = self.topics_idx[topic]
+        x = self.words_idx[word]
+
+        return self.volatility_by_index(x, y, z)
+
+    def volatility_by_index(self, x, y, z):
+        a1 = self.periods_array[x, y, z]
+        b1 = self.periods_array[:, y, z].sum()
+        a2 = self.periods_array[x, y, :].sum()
+        b2 = self.periods_array[:, y, :].sum()
+        if 0 in (a1, b1, b2, b2):
+            raise Exception(
+                "It isn't possible find the volatility for (x, y, z) : (" + str(x) + ", " + str(y) + ", " + str(
+                    z) + ")")
+        p_topic = a1 / b1
+        p_topic_all_periods = a2 / b2
+
+        return math.log10(p_topic / p_topic_all_periods)
+
+    def core_peripheral_orientation(self,period):
+        total_core = 0
+        total_peripheral = 0
+        df_filtered = self.df_periods[(self.df_periods['period'] == period) & (self.df_periods['replies'] > 0)]
+        if len(df_filtered) < 1:
+            raise Exception("Invalid period " + period)
+        for topic in df_filtered['topic'].unique().tolist():
+            if self.is_topic_core(topic,period):
+                total_core += df_filtered['replies'].sum()
+            else:
+                total_peripheral += df_filtered['replies'].sum()
+        return (total_core-total_peripheral)/(total_core+total_peripheral)
+
+    def is_topic_core(self, topic, period, threshold=0.05):
+        return abs(self.discrepancy_of_interactions(topic,period)) <= threshold
+
+    def discrepancy_of_interactions(self, topic, period):
+        df_filtered_topic = self.df_periods[self.df_periods['topic'] == topic]
+        if len(df_filtered_topic) < 1:
+            raise Exception("Invalid topic " + topic)
+        df_filtered_period = self.df_periods[self.df_periods['period'] == period]
+        if len(df_filtered_period) < 1:
+            raise Exception("Invalid period " + period)
+        a1 = df_filtered_period[df_filtered_period['topic'] == topic]['replies'].sum()
+        b1 = df_filtered_period['replies'].sum()
+        a2 = df_filtered_topic['replies'].sum()
+        b2 = self.df_periods['replies'].sum()
+        if 0 in (a1, b1, b2, b2):
+            raise Exception("It isn't possible to find the discrepancy for the topic " + topic + " in the period "+period)
+
+        p_topic_period = a1 / b1
+        p_topic_all_periods = a2 / b2
+        return math.log10(p_topic_period / p_topic_all_periods)
 
     def _proc_replies(self, doc_id, data, oc, topic):
         """
