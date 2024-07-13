@@ -29,17 +29,17 @@ If you don’t have the credentials, you can follow the instructions here:
 [How to get client_id and client_secret for Python Reddit API registration ? - GeeksforGeeks](https://www.geeksforgeeks.org/how-to-get-client_id-and-client_secret-for-python-reddit-api-registration/)
 
 ```python
-from comid.scraper import RedditScraper
+from comid.collector import RedditCollector
 import datetime as dt
 
-rscrap = RedditScraper()
+collector = RedditCollector()
 
-#setup reddit credentials
-rscrap.config_credentials(
-    client_id= "YOUR_CLIENT_ID",
-    client_secret= "YOUR_CLIENT_SECRET",
-    password= "YOUR_PASSWORD",
-    username= "YOUR_USERNAME"
+# setup reddit credentials
+collector.config_credentials(
+    client_id="YOUR_CLIENT_ID",
+    client_secret="YOUR_CLIENT_SECRET",
+    password="YOUR_PASSWORD",
+    username="YOUR_USERNAME"
 )
 ```
 
@@ -51,13 +51,13 @@ start_dt = dt.datetime(2022,1,1) # the initial date
 end_dt = dt.datetime(2022,1,2) #the final date
 
 # downlaod the O.C ids of given subreddit and date range
-rscrap.search_ids_by_datetime(subreddit,start_dt,end_dt)
+collector.search_ids_by_datetime(subreddit,start_dt,end_dt)
 ```
 
 Download all submissions of collected ids, including O.C, comments and replies
 
 ```python
-rscrap.donwload_by_ids()
+collector.donwload_by_ids()
 ```
 
 Import Comid and load the json files of files of Reddit submissions. 

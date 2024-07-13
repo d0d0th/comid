@@ -1,16 +1,16 @@
 import time
 
 import prawcore
-from pmaw import PushshiftAPI
 import datetime as dt
 import csv
 import praw
 from tqdm import tqdm
 import os
 import json
+from comid.pullpush import PullPushApi
 
 
-class RedditScraper:
+class RedditCollector:
     """
     A class to scrap the a subreddit
     """
@@ -43,7 +43,7 @@ class RedditScraper:
         """
 
         after = int(start_datetime.timestamp())
-        api = PushshiftAPI()
+        api = PullPushApi()
         limit = 1000
         day_count = 24 * 60 * 60
         self.ids = []
