@@ -1,5 +1,4 @@
 import requests
-import urllib3
 
 class PullPushApi:
     api_submssion_url = "https://api.pullpush.io/reddit/search/submission/?"
@@ -18,8 +17,7 @@ class PullPushApi:
                 query+="&"
             query+=str(k)+"="+str(v)
         api_url = self.api_submssion_url+query
-        urllib3.disable_warnings()
-        response = requests.get(api_url, verify=False)
+        response = requests.get(api_url)
         return response.json()['data']
 
 

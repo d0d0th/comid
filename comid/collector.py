@@ -250,8 +250,9 @@ class RedditCollector:
     @staticmethod
     def __write_remaining_ids(file_name, ids):
         with open(file_name, "w") as outfile:
+            ids_2d = [[id] for id in ids]
             csv_writer = csv.writer(outfile)
-            csv_writer.writerow(ids)
+            csv_writer.writerows(ids_2d)
 
     """
     def deprecated_downlad_by_datetime(self, subreddit, start_datetime, end_datetime=None,download_coments=True,
