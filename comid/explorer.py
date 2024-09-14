@@ -2,23 +2,26 @@ from tqdm import tqdm
 from datetime import datetime
 import pandas as pd
 
+
 class Explorer:
     """
     Class to explorer the dataset
     """
-    def __init__(self,posts):
+
+    def __init__(self, posts):
         self.posts = posts
         self.threads_stats = dict()
         self.authors_stats = dict()
         self.thread_replies = dict()
         self._thread_authors = dict()
         self.df_interval_activity = None
+        self.thread_activity = dict()
 
         oc_list = [k for k in posts.keys() if 'parent_id' not in posts[k]]
-        for oc in tqdm(oc_list, "Processing statistics") :
-            self._proc_thread(oc,oc)
+        for oc in tqdm(oc_list, "Processing statistics"):
+            self._proc_thread(oc, oc)
 
-    def _proc_thread(self,post_id,oc):
+    def _proc_thread(self, post_id, oc):
         '''
         Method to process the threads statistics
         '''
@@ -28,7 +31,7 @@ class Explorer:
         #threads stats
         if oc not in self.threads_stats:
             self.threads_stats[oc] = {
-                'number_ofposts' : 0,
+                'number_ofposts': 0,
                 'author_count': 0,
                 'posts_without_author_count': 0
             }
@@ -43,7 +46,7 @@ class Explorer:
         else:
             if author_id not in self.authors_stats:
                 self.authors_stats[author_id] = list()
-            self.authors_stats[author_id].append((post_id,oc))
+            self.authors_stats[author_id].append((post_id, oc))
             if author_id not in self._thread_authors[oc]:
                 self.threads_stats[oc]['author_count'] += 1
                 self._thread_authors[oc].add(author_id)
@@ -59,35 +62,41 @@ class Explorer:
             for reply in post['replies']:
                 self._proc_thread(reply, oc)
 
-    def thread_interval_activity(self,period_type):
+    def thread_interval_activity(self, period_type):
         '''
         Method to calculate the interval_activity
         ::param period_type: The period to group the posts. Can be 'd' for days, 'w' for weeks,
         'f' for fortnight, 'm' for months, 'q' for quarters or 'y' for years
         '''
 
-        periods_list = sorted(set([  self._period_key(v['created'], period_type)  for v in self.posts.values()]))
+        periods_list = sorted(set([self._period_key(v['created'], period_type) for v in self.posts.values()]))
         periods_dict = {item: index + 1 for index, item in enumerate(periods_list)}
         oc_list = [k for k in self.posts.keys() if 'parent_id' not in self.posts[k]]
-        data = [[0 for i in range(len(periods_list)+1)] for j in range(len(oc_list))]
+        data = [[0 for i in range(len(periods_list) + 1)] for j in range(len(oc_list))]
 
-        for row_index, oc in tqdm(enumerate(oc_list), "Processing interval activity"):
-            data[row_index][0] = oc
-            self._proc_interval(oc,data,row_index,self.posts,periods_dict,period_type)
+        for row_index, oc_id in tqdm(enumerate(oc_list), "Processing interval activity"):
+            data[row_index][0] = oc_id
+            self._proc_interval(oc_id, oc_id, data, row_index, self.posts, periods_dict, period_type)
         header = ['thread_id'] + periods_list
-        self.df_interval_activity = pd.DataFrame(data, columns = header)
+        self.df_interval_activity = pd.DataFrame(data, columns=header)
         self.df_interval_activity.set_index('thread_id', inplace=True)
 
-    def _proc_interval(self,id,data,row_index,posts,periods_dict,period_type):
+    def _proc_interval(self, post_id,oc_id, data, row_index, posts, periods_dict, period_type):
         '''
         Recursively process the interval activity
         '''
-        post = posts[id]
-        data[row_index][periods_dict[self._period_key(post['created'], period_type)]] += 1
+        post = posts[post_id]
+        period = self._period_key(post['created'],period_type)
+        data[row_index][periods_dict[period]] += 1
+        if period not in self.thread_activity:
+            self.thread_activity[period] = dict()
+        if oc_id not in self.thread_activity[period]:
+            self.thread_activity[period][oc_id] = []
+        self.thread_activity[period][oc_id].append(post_id)
 
         if 'replies' in post:
             for reply in post['replies']:
-                self._proc_interval(reply,data,row_index,posts,periods_dict,period_type)
+                self._proc_interval(reply, oc_id, data, row_index, posts, periods_dict, period_type)
 
     @staticmethod
     def _period_key(timestamp, period_type):
@@ -125,4 +134,3 @@ class Explorer:
                             "'f' for fortnight, 'm' for months, 'q' for quarters or "
                             "'y' for years")
         return period_key
-
