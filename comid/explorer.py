@@ -1,6 +1,8 @@
 from tqdm import tqdm
 from datetime import datetime
 import pandas as pd
+import os
+import json
 
 
 class Explorer:
@@ -14,7 +16,7 @@ class Explorer:
         self.authors_stats = dict()
         self.thread_replies = dict()
         self._thread_authors = dict()
-        self.df_interval_activity = None
+        self.df_interval_activity = pd.DataFrame([])
         self.thread_activity = dict()
 
         oc_list = [k for k in posts.keys() if 'parent_id' not in posts[k]]
@@ -98,6 +100,35 @@ class Explorer:
             for reply in post['replies']:
                 self._proc_interval(reply, oc_id, data, row_index, posts, periods_dict, period_type)
 
+    def export_data(self, save_path=""):
+        '''
+        Method to export the data
+        :param save_path: The path to save the corpus file. If not informed will be saved in current default path.
+        '''
+        timestamp = str(round(datetime.timestamp(datetime.now())))
+        self._dump_json(self.threads_stats, "threads_stats_" + timestamp + ".json", save_path)
+        self._dump_json(self.authors_stats, "authors_stats_" + timestamp + ".json", save_path)
+        self._dump_json(self.thread_replies, "thread_replies_" + timestamp + ".json", save_path)
+        self._dump_json(self.thread_activity, "thread_activity_" + timestamp + ".json", save_path)
+        self._dump_dataframe(self.df_interval_activity, "interval_activity_" + timestamp + ".csv", save_path)
+
+    def _dump_json(self, obj, file_name,save_path):
+        '''
+        Method to dump the json file
+        '''
+        file = file_name if not save_path else os.path.join(save_path, file_name)
+        with open(file, "w", encoding="utf-8") as outfile:
+            json.dump(obj, outfile)
+        print("Saved file " + file)
+
+    def _dump_dataframe(self, df, file_name, save_path):
+        '''
+        Method to dump the dataframe
+        '''
+        file = file_name if not save_path else os.path.join(save_path, file_name)
+        df.to_csv(file, index=True)
+        print("Saved file " + file)
+
     @staticmethod
     def _period_key(timestamp, period_type):
         """
@@ -134,3 +165,8 @@ class Explorer:
                             "'f' for fortnight, 'm' for months, 'q' for quarters or "
                             "'y' for years")
         return period_key
+
+
+
+
+
