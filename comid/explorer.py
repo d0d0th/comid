@@ -1,6 +1,9 @@
 from tqdm import tqdm
 
 class Explorer:
+    """
+    Class to explorer the dataset
+    """
     def __init__(self,posts):
         self._posts = posts
         self.threads_stats = dict()
@@ -10,7 +13,8 @@ class Explorer:
 
         oc_list = [k for k in tqdm(posts.keys(), "Filtering OCs")
                               if 'parent_id' not in posts[k]]
-        for oc in oc_list:
+
+        for oc in tqdm(oc_list, "Processing statistics") :
             self._proc_thread(oc,oc)
 
     def _proc_thread(self,post_id,oc):
@@ -18,6 +22,7 @@ class Explorer:
         post = self._posts[post_id]
         author_id = post['author_id']
 
+        #threads stats
         if oc not in self.threads_stats:
             self.threads_stats[oc] = {
                 'number_of_posts' : 0,
@@ -26,6 +31,7 @@ class Explorer:
             }
         self.threads_stats[oc]['number_of_posts'] += 1
 
+        # author stats
         if oc not in self._thread_authors:
             self._thread_authors[oc] = set()
 
@@ -40,8 +46,13 @@ class Explorer:
                 self._thread_authors[oc].add(author_id)
 
         if 'replies' in post:
-            if id not in self.thread_replies:
-                self.thread_replies[id] = post['replies']
+            #replies list
+            if oc not in self.thread_replies:
+                self.thread_replies[oc] = []
+            if post_id != oc:
+                self.thread_replies[oc].append(post_id)
+
+            #recursive call
             for reply in post['replies']:
                 self._proc_thread(reply, oc)
 
