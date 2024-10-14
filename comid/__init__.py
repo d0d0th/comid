@@ -67,6 +67,71 @@ class Comid:
                 my_dict = dict(map(lambda x: (x['id'], x), data))
                 self.posts.update(my_dict)
 
+    def _retrieve_thread_ids(self, post_id):
+        """
+        Internal function to retrieve all ids from a thread
+        :param post_id: id of the thread
+        :return: list of ids of the thread
+        """
+        ids = list()
+        if post_id in self.posts:
+            if 'replies' in self.posts[post_id]:
+                for reply in self.posts[post_id]['replies']:
+                    aux_list = self._retrieve_thread_ids(reply)
+                    if len(aux_list) > 0:
+                        ids.extend(aux_list)
+            ids.append(post_id)
+        return ids
+    def clean_data(self, remove_no_content=True, remove_no_author=True, keywords=[], boundary_keywords=False):
+        """
+        Function to clean the data.
+        :param remove_no_content: Remove posts without content
+        :param remove_no_author: Remove posts without author
+        :param keywords: Remove posts that contains any of keywords
+        :param boundary_keywords: Used only if keywords is set. If False, will search for substrings of any keywords
+        """
+        keys_to_remove = set()
+        before_clean = len(self.posts)
+
+        if remove_no_content:
+            no_content_dict = {k: v for k, v in tqdm(self.posts.items(), desc="Searching posts without content")
+                               if 'parent_id' not in v and v['selftext'] in ["[removed]", "[deleted]"]
+                               or 'parent_id' in v and v['full_text'] in ["[removed]", "[deleted]"]
+                               }
+
+            for key in tqdm(set(no_content_dict.keys()), desc="Getting the threads of posts without content"):
+                aux_list = self._retrieve_thread_ids(key)
+                keys_to_remove |= set(aux_list)
+
+        if remove_no_author:
+            no_author_dict = {k: v for k, v in tqdm(self.posts.items(), desc="Searching posts without author")
+                              if v['author_id'] is None
+                              }
+
+            for key in tqdm(set(no_author_dict.keys()), desc="Getting the threads of posts without author"):
+                aux_list = self._retrieve_thread_ids(key)
+                keys_to_remove |= set(aux_list)
+
+        if keywords:
+            regex = r'\b(?:{})\b' if boundary_keywords else r'{}'
+
+            keywords_dicty = {k: v for k, v in self.posts.items()
+                              if re.search(regex.format(r'|'.join(keywords)), v['full_text'], re.IGNORECASE)
+                              }
+
+            for key in tqdm(set(keywords_dicty.keys()),
+                            desc="Getting the threads of posts with the keywords to remove"):
+                aux_list = self._retrieve_thread_ids(key)
+                keys_to_remove |= set(aux_list)
+
+        if len(keys_to_remove) > 0:
+            self.posts = {k: v for k, v in tqdm(self.posts.items(), desc="Filtering posts")
+                          if k not in keys_to_remove
+                          }
+            print("Number of removed posts:", before_clean - len(self.posts))
+        else:
+            print("Nothing to clean")
+
     def generate_corpus(self, use_lemmas=True, include_comments=False):
         """
         Generates the corpus with the list of tokens from each document

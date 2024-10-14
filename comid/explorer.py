@@ -7,7 +7,7 @@ import json
 
 class Explorer:
     """
-    Class to explorer the dataset
+    Class to explore the dataset
     """
 
     def __init__(self, posts):
@@ -63,6 +63,48 @@ class Explorer:
             # recursive call
             for reply in post['replies']:
                 self._proc_thread(reply, oc)
+
+    def data_summary(self):
+        """
+        The function prints basic information about the loaded data:
+
+        Number of OCs
+        Number of OCs without content
+        Number of OCs without author
+        Number of comments/replies
+        Number of comments/replies without content
+        Number of comments/replies without author
+        """
+        oc = 0
+        comments = 0
+        oc_no_author = 0
+        comments_no_author = 0
+        oc_no_content = 0
+        comments_no_content = 0
+        for post in self.posts.values():
+            if 'parent_id' not in post:
+                oc += 1
+                if post['author_id'] is None:
+                    oc_no_author += 1
+                if post['selftext'] in ["[removed]", "[deleted]"]:
+                    oc_no_content += 1
+            else:
+                comments += 1
+                if post['author_id'] is None:
+                    comments_no_author += 1
+                if post['full_text'] in ["[removed]", "[deleted]"]:
+                    comments_no_content += 1
+        print("Number of posts: ", len(self.posts))
+        if oc > 0:
+            print("Number of OCs:", oc)
+            print("Number of OCs without content:", oc_no_content, "(" + str(round(100 * oc_no_content / oc, 2)) + "%)")
+            print("Number of OCs without author:", oc_no_author, "(" + str(round(100 * oc_no_author / oc, 2)) + "%)")
+        if comments > 0:
+            print("Number of comments/replies:", comments)
+            print("Number of comments/replies: without content:", comments_no_content,
+                  "(" + str(round(100 * comments_no_content / comments, 2)) + "%)")
+            print("Number of comments/replies: without author:", comments_no_author,
+                  "(" + str(round(100 * comments_no_author / comments, 2)) + "%)")
 
     def thread_interval_activity(self, period_type):
         '''
