@@ -7,10 +7,19 @@ import json
 
 class Explorer:
     """
-    Class to explore the dataset
+    Class to explore and analyze datasets containing posts and comments.
+
+    This class calculates thread statistics, author statistics, thread replies,
+    and generates interval-based activity summaries for the provided dataset.
     """
 
     def __init__(self, posts):
+        """
+        Initialize the Explorer with a dataset of posts.
+
+        Parameters:
+            posts (dict): A dictionary containing post data with post IDs as keys.
+        """
         self.posts = posts
         self.threads_stats = dict()
         self.authors_stats = dict()
@@ -23,57 +32,15 @@ class Explorer:
         for oc in tqdm(oc_list, "Processing statistics"):
             self._proc_thread(oc, oc)
 
-    def _proc_thread(self, post_id, oc):
-        '''
-        Method to process the threads statistics
-        '''
-        post = self.posts[post_id]
-        author_id = post['author_id']
-
-        #threads stats
-        if oc not in self.threads_stats:
-            self.threads_stats[oc] = {
-                'number_ofposts': 0,
-                'author_count': 0,
-                'posts_without_author_count': 0
-            }
-        self.threads_stats[oc]['number_ofposts'] += 1
-
-        # author stats
-        if oc not in self._thread_authors:
-            self._thread_authors[oc] = set()
-
-        if author_id is None:
-            self.threads_stats[oc]['posts_without_author_count'] += 1
-        else:
-            if author_id not in self.authors_stats:
-                self.authors_stats[author_id] = list()
-            self.authors_stats[author_id].append((post_id, oc))
-            if author_id not in self._thread_authors[oc]:
-                self.threads_stats[oc]['author_count'] += 1
-                self._thread_authors[oc].add(author_id)
-
-        if 'replies' in post:
-            #replies list
-            if oc not in self.thread_replies:
-                self.thread_replies[oc] = []
-            if post_id != oc:
-                self.thread_replies[oc].append(post_id)
-
-            # recursive call
-            for reply in post['replies']:
-                self._proc_thread(reply, oc)
-
     def data_summary(self):
         """
-        The function prints basic information about the loaded data:
+        Print a summary of the dataset.
 
-        Number of OCs
-        Number of OCs without content
-        Number of OCs without author
-        Number of comments/replies
-        Number of comments/replies without content
-        Number of comments/replies without author
+        The summary includes:
+            - Number of original content (OC) posts
+            - Number of comments and replies
+            - Number of posts without content
+            - Number of posts without an author
         """
         oc = 0
         comments = 0
@@ -107,11 +74,14 @@ class Explorer:
                   "(" + str(round(100 * comments_no_author / comments, 2)) + "%)")
 
     def thread_interval_activity(self, period_type):
-        '''
-        Method to calculate the interval_activity
-        ::param period_type: The period to group the posts. Can be 'd' for days, 'w' for weeks,
-        'f' for fortnight, 'm' for months, 'q' for quarters or 'y' for years
-        '''
+        """
+        Calculate and store interval-based thread activity.
+
+        Parameters:
+            period_type (str): The time period for grouping posts.
+                              Options: 'd' (days), 'w' (weeks), 'f' (fortnight),
+                                       'm' (months), 'q' (quarters), 'y' (years)
+        """
 
         periods_list = sorted(set([self._period_key(v['created'], period_type) for v in self.posts.values()]))
         periods_dict = {item: index + 1 for index, item in enumerate(periods_list)}
@@ -125,10 +95,87 @@ class Explorer:
         self.df_interval_activity = pd.DataFrame(data, columns=header)
         self.df_interval_activity.set_index('thread_id', inplace=True)
 
+    def export_data(self, save_path=""):
+        """
+        Export thread statistics, author statistics, and interval activity to files.
+
+        Parameters:
+            save_path (str, optional): The directory to save the exported files.
+                                       Defaults to the current directory.
+        """
+        timestamp = str(round(datetime.timestamp(datetime.now())))
+        self._dump_json(self.threads_stats, "threads_stats_" + timestamp + ".json", save_path)
+        self._dump_json(self.authors_stats, "authors_stats_" + timestamp + ".json", save_path)
+        self._dump_json(self.thread_replies, "thread_replies_" + timestamp + ".json", save_path)
+        self._dump_json(self.thread_activity, "thread_activity_" + timestamp + ".json", save_path)
+        self._dump_dataframe(self.df_interval_activity, "interval_activity_" + timestamp + ".csv", save_path)
+
+    def _proc_thread(self, post_id, oc):
+        '''
+        Process thread statistics for a given post.
+
+        This method updates the thread statistics and author statistics
+        recursively for each post and its replies.
+
+        Parameters:
+            post_id (str): The ID of the post to process.
+            oc (str): The ID of the original content (OC) to which the post belongs.
+        '''
+        post = self.posts[post_id]
+        author_id = post['author_id']
+
+        #threads stats
+        if oc not in self.threads_stats:
+            self.threads_stats[oc] = {
+                'number_of_posts': 0,
+                'author_count': 0,
+                'posts_without_author_count': 0
+            }
+        self.threads_stats[oc]['number_of_posts'] += 1
+
+        # author stats
+        if oc not in self._thread_authors:
+            self._thread_authors[oc] = set()
+
+        if author_id is None:
+            self.threads_stats[oc]['posts_without_author_count'] += 1
+        else:
+            if author_id not in self.authors_stats:
+                self.authors_stats[author_id] = list()
+            self.authors_stats[author_id].append((post_id, oc))
+            if author_id not in self._thread_authors[oc]:
+                self.threads_stats[oc]['author_count'] += 1
+                self._thread_authors[oc].add(author_id)
+
+        if 'replies' in post:
+            #replies list
+            if oc not in self.thread_replies:
+                self.thread_replies[oc] = []
+            if post_id != oc:
+                self.thread_replies[oc].append(post_id)
+
+            # recursive call
+            for reply in post['replies']:
+                self._proc_thread(reply, oc)
+
     def _proc_interval(self, post_id,oc_id, data, row_index, posts, periods_dict, period_type):
-        '''
-        Recursively process the interval activity
-        '''
+        """
+        Recursively process and update interval-based thread activity.
+
+        This method calculates the number of posts for each specified time period
+        and updates the interval activity data structure. It processes all replies
+        recursively to ensure complete data aggregation.
+
+        Parameters:
+            post_id (str): The ID of the current post being processed.
+            oc_id (str): The ID of the original content (OC) to which the post belongs.
+            data (list): A 2D list representing the interval activity matrix.
+            row_index (int): The current row index in the interval activity matrix.
+            posts (dict): Dictionary containing post data with post IDs as keys.
+            periods_dict (dict): A mapping of period labels to column indices in the interval activity matrix.
+            period_type (str): The period type for grouping posts ('d' for days, 'w' for weeks,
+                              'f' for fortnight, 'm' for months, 'q' for quarters, 'y' for years).
+        """
         post = posts[post_id]
         period = self._period_key(post['created'],period_type)
         data[row_index][periods_dict[period]] += 1
@@ -142,31 +189,42 @@ class Explorer:
             for reply in post['replies']:
                 self._proc_interval(reply, oc_id, data, row_index, posts, periods_dict, period_type)
 
-    def export_data(self, save_path=""):
-        '''
-        Method to export the data
-        :param save_path: The path to save the corpus file. If not informed will be saved in current default path.
-        '''
-        timestamp = str(round(datetime.timestamp(datetime.now())))
-        self._dump_json(self.threads_stats, "threads_stats_" + timestamp + ".json", save_path)
-        self._dump_json(self.authors_stats, "authors_stats_" + timestamp + ".json", save_path)
-        self._dump_json(self.thread_replies, "thread_replies_" + timestamp + ".json", save_path)
-        self._dump_json(self.thread_activity, "thread_activity_" + timestamp + ".json", save_path)
-        self._dump_dataframe(self.df_interval_activity, "interval_activity_" + timestamp + ".csv", save_path)
-
     def _dump_json(self, obj, file_name,save_path):
-        '''
-        Method to dump the json file
-        '''
+        """
+        Save a Python object as a JSON file.
+
+        This method converts a Python object to a JSON-formatted string and writes it
+        to a file in the specified directory.
+
+        Parameters:
+            obj (dict or list): The Python object to be serialized and saved.
+            file_name (str): The name of the output file (with .json extension).
+            save_path (str): The directory where the file will be saved. If not specified,
+                            the file will be saved in the current working directory.
+
+        Output:
+            A message indicating that the file has been saved successfully.
+        """
         file = file_name if not save_path else os.path.join(save_path, file_name)
         with open(file, "w", encoding="utf-8") as outfile:
             json.dump(obj, outfile)
         print("Saved file " + file)
 
     def _dump_dataframe(self, df, file_name, save_path):
-        '''
-        Method to dump the dataframe
-        '''
+        """
+        Save a pandas DataFrame as a CSV file.
+
+        This method writes the contents of a pandas DataFrame to a CSV file in the specified directory.
+
+        Parameters:
+            df (pandas.DataFrame): The DataFrame to be saved.
+            file_name (str): The name of the output file (with .csv extension).
+            save_path (str): The directory where the file will be saved. If not specified,
+                            the file will be saved in the current working directory.
+
+        Output:
+            A message indicating that the file has been saved successfully.
+        """
         file = file_name if not save_path else os.path.join(save_path, file_name)
         df.to_csv(file, index=True)
         print("Saved file " + file)
@@ -174,11 +232,16 @@ class Explorer:
     @staticmethod
     def _period_key(timestamp, period_type):
         """
-        Retrieve the period group label given a timestamp and period type
-        :param timestamp: The utc timestamp
-        :param period_type: The period to group the topics. Can be 'd' for days, 'w' for weeks,
-        'f' for fortnight, 'm' for months, 'q' for quarters or 'y' for years
-        :return: The period group label
+        Retrieve the period group label given a timestamp and period type.
+
+        Parameters:
+            timestamp (float): The UTC timestamp.
+            period_type (str): The period type for grouping posts.
+                              Options: 'd' (days), 'w' (weeks), 'f' (fortnight),
+                                       'm' (months), 'q' (quarters), 'y' (years)
+
+        Returns:
+            str: The formatted period label.
         """
         dt = datetime.fromtimestamp(timestamp)
         per = period_type.lower()
