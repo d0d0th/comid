@@ -1,32 +1,36 @@
-# COMID - Community identification module for Reddit conversations
+# **COMID - Community Identification Module for Reddit Conversations**  
 
-COMID is a package of tools for analyzing conversations on Reddit
+**COMID** is a Python toolkit for collecting and analyzing Reddit conversations. It offers powerful tools for building corpora, annotating topics, and performing temporal analysis of discussions in subreddit threads.  
 
-### What does COMID?
+---
 
-- Collects submissions from a subreddit
-- Generates a corpus based on the O.C. (original content) of the submissions.
-- Assists in the annotation of topics in pre-grouped conversation clusters.
-- Conducts temporal analysis of topics.
+## **Features**  
 
-### What does Comid not do?
+### What does COMID do?  
 
-- Comid does not conduct topic modeling. For topic modeling, we recommend using the SBM [https://github.com/martingerlach/hSBM_Topicmodel](https://github.com/martingerlach/hSBM_Topicmodel).
+- Collects conversation threads from a subreddit.  
+- Explores and processes collected data.  
+- Generates a corpus based on the original content (O.C.) of Reddit threads.  
+- Assists in annotating topics within pre-grouped conversation clusters.  
+- Conducts temporal analysis of topics over time.  
 
-# Quick Start
+### What does COMID not do?  
+- COMID does **not** perform topic modeling. For that, we recommend using the [hSBM Topic Model](https://github.com/martingerlach/hSBM_Topicmodel).  
 
-Install Comid and download the en_core_web_sm model
+---
+
+## **Quick Start**  
+
+### Installation  
+Install COMID and download the `en_core_web_sm` model for **spaCy**:  
 
 ```bash
 pip install comid
 python -m spacy download en_core_web_sm
 ```
 
-Import RedditScrapper submodule, creates a RedditScraper instance and configure the reddit credentials. 
-
-If you don’t have the credentials, you can follow the instructions here: 
-
-[How to get client_id and client_secret for Python Reddit API registration ? - GeeksforGeeks](https://www.geeksforgeeks.org/how-to-get-client_id-and-client_secret-for-python-reddit-api-registration/)
+### Setting up Reddit Credentials  
+To use COMID, configure your Reddit credentials. If you don’t have credentials yet, follow this [guide](https://www.geeksforgeeks.org/how-to-get-client_id-and-client_secret-for-python-reddit-api-registration/).  
 
 ```python
 from comid.collector import RedditCollector
@@ -34,7 +38,7 @@ import datetime as dt
 
 collector = RedditCollector()
 
-# setup reddit credentials
+# Configure Reddit credentials
 collector.config_credentials(
     client_id="YOUR_CLIENT_ID",
     client_secret="YOUR_CLIENT_SECRET",
@@ -43,132 +47,141 @@ collector.config_credentials(
 )
 ```
 
-Inform the subreddit and date range and download the O.C. ids.
+### Collecting Data  
+Specify the subreddit and date range for collecting thread IDs:  
 
 ```python
-subreddit = 'digitalnomad' # the subreddit
-start_dt = dt.datetime(2022,1,1) # the initial date
-end_dt = dt.datetime(2022,1,2) #the final date
+subreddit = 'digitalnomad'
+start_dt = dt.datetime(2022, 1, 1)
+end_dt = dt.datetime(2022, 1, 2)
 
-# downlaod the O.C ids of given subreddit and date range
-collector.search_ids_by_datetime(subreddit,start_dt,end_dt)
+# Download the original content (O.C.) thread IDs for the given subreddit and date range
+collector.search_ids_by_datetime(subreddit, start_dt, end_dt)
 ```
 
-Download all submissions of collected ids, including O.C, comments and replies
+Download all submissions, including the original content, comments, and replies:  
 
 ```python
-collector.donwload_by_ids()
+collector.download_by_ids()
 ```
 
-Import Comid and load the json files of files of Reddit submissions. 
+---
+
+## **Generating and Reducing the Corpus**  
+
+### Load JSON Files  
+Load the downloaded submissions from JSON files:  
 
 ```python
 from comid import Comid
+
 cm = Comid()
-# Load all json files as a list. You can use full or relative path for every file
-files = ['dataset/submissions.json','dataset/comments.json']
+files = ['dataset/submissions.json', 'dataset/comments.json']
 cm.load_json_files(files=files)
 ```
 
-Generate the corpus of submission posts. The corpus includes only the main submission, not will include the comments and replies. This step can expends few minutes if has a large number of posts.
+### Generate the Corpus  
+The corpus will include only the main submissions (no comments or replies). This process may take a few minutes for large datasets:  
 
 ```python
 cm.generate_corpus()
+print("Corpus size:", len(cm.corpus))
 ```
 
-Once generated, The corpus can be accessed in the atribute `corpus`. Explore the corpus and check the corpus size.
+### Reduce the Corpus  
+For efficient topic modeling, we recommend keeping the corpus size below **6,000 documents**. Reduce the corpus by filtering posts with fewer than 10 interactions (comments or replies):  
 
 ```python
-print("corpus size: ",len(cm.corpus))
+cm.reduce_corpus(target_size=6000, optimize_num_interactions=False, min_num_interactions=10)
+print("Corpus size:", len(cm.corpus), "Reduced corpus size:", len(cm.corpus_reduced))
 ```
 
-For a reasonable runtime topic modelling using SBM, it is recommended that the corpus does not exceed the approximate size of 6000 documents.  If the corpus is too large, perform the next step to shrink the corpus.
+---
+
+## **Saving and Loading Data**  
+
+### Save the Corpus  
+Save the reduced corpus as a JSON file for use with hSBM:  
 
 ```python
-# reduce the corpus by optimizing the number of tokens and pinning documents that have
-# at last 10 interactions (comments or replies)
-cm.reduce_corpus(target_size=6000,optimize_num_interactions=False,min_num_interactions=10)
-#print the full corpus length vs reduced corpus length
-print("corpus: ",len(cm.corpus),"corpus_reduced: ",len(cm.corpus_reduced))
-```
-
-Save the corpus as a json to used in HSMB
-
-```python
-# gerating json of reduced corpus
 cm.save_corpus(reduced=True)
 ```
 
-Save the current Comid instance in a pickle file to be loaded anytime.
+### Save and Load COMID Instances  
+You can save the current COMID state as a pickle file for future use:  
 
 ```python
-cm.save()
-```
+cm.save("comid_saved_file.pickle")
 
-Use the json file of corpus in a topic modelling. For Comid, it is recommended the use of SBMTopic Model. Here is a guide how to use the corpus in SBM [SBM Topic Model](SBM.md). Once the topic modelling is finished, the previous Comid state can be loaded.
-
-```python
+# To reload a saved COMID instance:
 from comid import Comid
-# replace the comid_file_name with the name of the file to be loaded
-comid_file_name = "comid_saved_file.pickle"
-cm = Comid.load(comid_file_name)
+cm = Comid.load("comid_saved_file.pickle")
 ```
 
-Load the CSV clusters file generated in topic modelling
+---
+
+## **Working with Clusters and Topics**  
+
+### Load Cluster Data  
+Load the CSV file containing clusters generated by the topic modeling step:  
 
 ```python
-# replace the cluster_file with the name of the file to be loaded
 cluster_file = 'path_to_file/topsbm_level_1_clusters.csv'
-cm.load_clusters_file(cluster_file )
-# show clusters dataframe
+cm.load_clusters_file(cluster_file)
 cm.df_clusters.head()
 ```
 
-Print random samples from any Cluster executing the method `print_cluster_samples` 
+### Print Cluster Samples  
+Display random samples from a specific cluster:  
 
 ```python
-# Printing 3 random samples from 'Cluster 1'
-cm.print_cluster_samples('Cluster 1',3)
+cm.print_cluster_samples('Cluster 1', 3)
 ```
 
-Also, it is possible to retrieve a conversation flatten text by a document id
+### Retrieve Flattened Conversation Text  
+Get the full conversation as flattened text for a specific document ID:  
 
 ```python
-# replace the doc_id with the id of document to retrieve
 doc_id = 'rtsodc'
-text = c.retrieve_conversation(doc_id)
+text = cm.retrieve_conversation(doc_id)
 print(text)
 ```
 
-Save a CSV summary of clusters. The summary file contains four columns: Cluster (cluster id), Num Docs (number of documents in cluster), Percent (percentual of documents in the cluster from all documents) and Topic (To annotate the topic label).
+### Save a Cluster Summary  
+Generate a CSV summary with columns for cluster ID, number of documents, percentage of total documents, and a topic label column for annotation:  
 
 ```python
 cm.save_clusters_summary()
 ```
 
-Use the saved file in previous step to annotate the topics label in the `Topic`  column. 
+---
 
- Build the topics data frame from Topics annotated in cluster summary CSV. Clusters not annotated will not be included in the data frame.
+## **Building and Exploring Topics**  
+
+### Build the Topics Data Frame  
+Once you’ve annotated the clusters, build the topics data frame:  
 
 ```python
 cm.build_topics("clusters_summary.csv")
 cm.df_topics.head()
 ```
 
-Alternatively, it is possible to build the topics data frame without annotate the topic labels. In this case, it this case the method will consider a minimum value for the percentual of documents to include the cluster in the topic data frame. 
+Alternatively, build the topics data frame based on a minimum percentage of documents per cluster (e.g., 7%):  
 
 ```python
-# build the df_topics just for the clusters with a minimal of 7% of documents. 
-# if omitted the parameter min_percent, it will consider 10% 
 cm.build_topics(min_percent=7)
 ```
 
-Explore the topics grouping them by periods
+### Group Topics by Time Period  
+Group topics by days, weeks, months, or years for temporal analysis:  
 
 ```python
-# Group topics by months. 
-# parameter period_type can be 'd' for days, 'w' for weeks, 'm' for months and
-# 'y' for years
 cm.group_by_period(period_type="m")
-cm.df_periods
+cm.df_periods.head()
 ```
+
+---
+
+## **Conclusion**  
+COMID simplifies the process of collecting and analyzing Reddit conversations. With its tools for generating corpora, annotating topics, and performing temporal analysis, it’s an essential tool for social media research.  
+

@@ -5,7 +5,7 @@ with open("README.md", "r", encoding = "utf-8") as fh:
 
 setup(
     name='comid',
-    version='0.0.2',
+    version='0.0.3',
     packages=['comid'],
     url='https://github.com/d0d0th/comid',
     license='MIT License',
@@ -21,7 +21,7 @@ setup(
                       'tqdm',
                       'pandas',
                       'praw>=7.7',
-                      'pmaw'
+                      'numpy'
                       ],
     classifiers=[
         "Development Status :: 3 - Alpha",
