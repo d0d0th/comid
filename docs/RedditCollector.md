@@ -12,12 +12,15 @@ Reddit API. It allows users to:
 ## Table of Contents
 - [Class: RedditCollector](#class-redditcollector)
   - [Initialization](#initialization)
-  - [Collecting Additional Fields Beyond the Defaults](#collecting-additional-fields-beyond-the-defaults-)
-  - [Data Collection Process](#data-collection-process-)
-    - [Collecting IDs](#step-1-collecting-ids-)
-    - [Downloading Posts and Comments](#step-2-downloading-posts-and-comments-)
-    - [Restarting the Download](#restarting-the-download-)
-    - [Loading Data into a Comid Object](#step-3-loading-data-into-a-comid-object-)
+  - [Collecting Additional Fields Beyond the Defaults](#collecting-additional-fields-beyond-the-defaults)
+  - [Data Collection Process](#data-collection-process)
+    - [Collecting IDs](#step-1-collecting-ids)
+    - [Downloading Posts and Comments](#step-2-downloading-posts-and-comments)
+    - [Restarting the Download](#restarting-the-download)
+    - [Loading Data into a Comid Object](#step-3-loading-data-into-a-comid-object)
+  - [Output Data](#output-data)
+    - [Example JSON Structure](#example-json-structure)
+    - [Key Features of the Output](#key-features-of-the-output)
   - [Methods](#methods)
     - [search_ids_by_datetime](#search_ids_by_datetime)
     - [load_ids_file](#load_ids_file)
@@ -96,7 +99,7 @@ collector.config_credentials(
 )
 ```
 
-### Collecting Additional Fields Beyond the Defaults  
+### Collecting Additional Fields Beyond the Defaults
 
 The `RedditCollector` class allows customization of the fields collected from both submissions and comments. By default, the `submission_fields` attribute contains a predefined list of fields for original posts. To collect additional fields, simply add the desired field to this list.  
 
@@ -144,11 +147,11 @@ print(collector.comments_fields)
 #  'total_awards_received', 'ups', 'approved_by']
 ```
 
-### Data Collection Process  
+### Data Collection Process
 Data collection is an iterative process that organizes the content in a specified folder. This process consists of two 
 main steps: collecting the IDs of the Original Content (OC) and downloading the associated posts and comments.  
 
-#### Step 1: Collecting IDs  
+#### Step 1: Collecting IDs
 The process begins by retrieving the IDs of Original Content (OC) that match the search query. These IDs are saved in a 
 CSV file, where:  
 - **Column 1**: OC ID  
@@ -176,7 +179,7 @@ you want to collect posts using IDs from a previously saved CSV file, you can lo
 collector.load_ids_file('ids.csv')  
 ```  
 
-#### Step 2: Downloading Posts and Comments  
+#### Step 2: Downloading Posts and Comments
 Once the IDs have been collected, you can begin downloading the posts. The downloaded content is automatically saved in 
 two separate JSON files:  
 - **Submissions file**: Contains only the Original Content (OC)  
@@ -195,7 +198,7 @@ collector.download_by_ids()
 
 In case the download process is interrupted, the remaining IDs are saved in a CSV file named `remaining_ids_{file_creation_timestamp}.csv`.  
 
-#### Restarting the Download  
+#### Restarting the Download
 If the download was interrupted, follow these steps to resume:  
 
 1. **Load the remaining IDs from the `remaining_ids` file:**  
@@ -210,7 +213,7 @@ If the download was interrupted, follow these steps to resume:
 
 The new OC and comment data will be saved in separate files without overwriting the previously downloaded data.  
 
-#### Step 3: Loading Data into a Comid Object  
+#### Step 3: Loading Data into a Comid Object
 After collecting and downloading the data, you can load it into a `comid` object for further processing. This can be 
 done by loading the generated JSON files.  
 
@@ -222,13 +225,102 @@ cm = Comid()
 # Load multiple JSON files into a comid object  
 files = ['dataset/submissions.json', 'dataset/comments.json']  
 cm.load_json_files(files=files)  
-```  
+```
 
 By following this structured process, you ensure a seamless workflow for collecting data.
 
+### Output Data
+The output consists of conversation trees that include the Original Content (OC), comments, and replies, but only the 
+specified key-value pairs (attributes) are retained in the final dataset.  
+
+Each conversation tree starts with the OC and branches into its associated comments and replies, creating a structured 
+and organized view of the conversation.
+
+#### Example JSON Structure
+Below is an example of the JSON output format for both the **Original Content (OC)** and a **comment or reply**.
+
+---
+
+#### **Original Content (OC) Example:**
+
+```json
+{
+   "all_awardings": [],
+   "author": "JK1411",
+   "author_id": "6drvgirz",
+   "author_flair_text": null,
+   "created": 1672616958.0,
+   "downs": 0,
+   "id": "100xbgx",
+   "link_flair_text": "Question",
+   "num_comments": 58,
+   "num_crossposts": 0,
+   "permalink": "/r/digitalnomad/comments/100xbgx/kl_or_bali/",
+   "score": 22,
+   "selftext": "Hoping to hear from a few DNs who have spent time in both places. Overall, did you have a better time in one place or the other? Why? What was the most frustrating aspect of living in each place? \n\nJust curious to hear some personal reflections on this question, as they're clearly very different and diverse locations with distinct positives/negatives etc...hit me with whatever you feel/felt!",
+   "subreddit": "digitalnomad",
+   "title": "KL or Bali",
+   "total_awards_received": 0,
+   "ups": 22,
+   "upvote_ratio": 0.8,
+   "replies": [
+      "j2lf1hv",
+      "j2kk4fg",
+      "j2lg9iw",
+      "j2kkphw",
+      "j2lbgee",
+      "j2lba2x",
+      "j2loqfo",
+      "j2m23fk",
+      "j2mbwnr",
+      "j2lw155"
+   ]
+}
+```
+
+---
+
+#### **Comment or Reply Example:**
+
+```json
+{
+   "all_awardings": [],
+   "author": "baboughtnshoe",
+   "author_id": "ryhd5",
+   "author_flair_text": null,
+   "body": "Is it safe to send passport photos via Airbnb message? If Airbnb is breached, could someone steal the person’s identity using the passport photo?",
+   "controversiality": 0,
+   "created": 1672647959.0,
+   "depth": 0,
+   "downs": 0,
+   "id": "j2lz4n0",
+   "parent_id": "100y751",
+   "permalink": "/r/digitalnomad/comments/100y751/are_airbnb_hosts_allowed_to_ask_for_passport_photo/j2lz4n0/",
+   "score": 1,
+   "subreddit": "digitalnomad",
+   "total_awards_received": 0,
+   "ups": 1,
+   "replies": [
+      "j2n4re6"
+   ]
+}
+```
+
+---
+
+#### Key Features of the Output:
+- **Original Content (OC)**: Includes fields such as `title`, `selftext`, `author`, `created`, and `num_comments`. The `replies` field contains a list of comment IDs that reference this OC.  
+- **Comments and Replies**: Contain fields such as `body`, `author`, `created`, `parent_id`, and `depth` to indicate their relationship and position within the conversation tree. The `replies` field lists any direct replies to the comment.  
+
+This structured output format provides a clear and comprehensive representation of the conversation, making it easier 
+to analyze the context, relationships, and dynamics within a Reddit thread.
+
+
 ### Methods
 
-#### `search_ids_by_datetime(subreddit, start_datetime, end_datetime, file_name=None)`
+#### search_ids_by_datetime
+`search_ids_by_datetime(subreddit, start_datetime, end_datetime, file_name=None)`
+
 Search for post IDs in a specified subreddit based on a date range and save them to a file.
 
 **Arguments**:
@@ -242,7 +334,9 @@ Saves collected post IDs to a CSV file and prints the total number of collected 
 
 ---
 
-#### `load_ids_file(file_name, id_col_index=0)`
+#### load_ids_file
+`load_ids_file(file_name, id_col_index=0)`
+
 Load post IDs from a CSV file and store them in the `ids` attribute.
 
 **Arguments**:
@@ -251,7 +345,9 @@ Load post IDs from a CSV file and store them in the `ids` attribute.
 
 ---
 
-#### `config_credentials(client_id, client_secret, password, username, user_agent='comid')`
+#### config_credentials
+`config_credentials(client_id, client_secret, password, username, user_agent='comid')`
+
 Configure the Reddit API credentials for authentication.
 
 **Arguments**:
@@ -263,7 +359,9 @@ Configure the Reddit API credentials for authentication.
 
 ---
 
-#### `download_by_ids(download_comments=True, ids=None, output_folder=None, max_retries=50)`
+#### download_by_ids
+`download_by_ids(download_comments=True, ids=None, output_folder=None, max_retries=50)`
+
 Download submissions and comments by their IDs and save them to JSON files.
 
 **Arguments**:
