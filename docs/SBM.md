@@ -1,18 +1,24 @@
 # SBM Topic Model
+This project uses the [Graph-tool](https://git.skewed.de/count0/graph-tool/-/wikis/installation-instructions) library to generate topics using the Stochastic Block Model (SBM). The process involves creating a word-document network, fitting the SBM model, and extracting clusters of topics from the data.
 
-This project uses the Graph-tool to generate the topics using Stochastic Blocking Model. Installations instructions for Graph-tool can be found here: [https://git.skewed.de/count0/graph-tool/-/wikis/installation-instructions](https://git.skewed.de/count0/graph-tool/-/wikis/installation-instructions)
+## Requirements
+Ensure Graph-tool is installed in your environment. Follow the installation instructions provided here: [Graph-tool Installation Instructions](https://git.skewed.de/count0/graph-tool/-/wikis/installation-instructions).
 
-Clone the hSBM_TopicModel project from official Github repository 
+## Quick Start Guide
+### 1. Clone the hSBM_TopicModel Project
 
-[GitHub - martingerlach/hSBM_Topicmodel: Using stochastic block models for topic modeling](https://github.com/martingerlach/hSBM_Topicmodel)
+To begin, clone the project from its official GitHub repository:
+[GitHub - martingerlach/hSBM_Topicmodel](https://github.com/martingerlach/hSBM_Topicmodel)
 
-```bash
+Run the following command:
+``` bash
 git clone https://github.com/martingerlach/hSBM_Topicmodel.git
 ```
 
-Copy the file `[sbmtm.py](http://sbmtm.py)` to your python project. Creates a new python ( or Jupyter Notebook). Import all required modules
+Copy the file `sbmtm.py` from the cloned repository into your Python project.
 
-```python
+Create a new Python file or Jupyter Notebook, and import the required modules:
+``` python
 import json
 import statistics
 import pickle
@@ -24,77 +30,89 @@ from datetime import datetime
 start_time = datetime.now()
 ```
 
-Load the corpus file 
+### 2. Load the Corpus File
+Load the corpus file (your textual data) into memory. Replace `corpus_json_file` with the name of your JSON file containing the data.
 
-```python
-#replace the corpus_json_file with the name of the file to be loaded
+``` python
+# Replace with the name of your JSON corpus file
 corpus_json_file = 'comid_corpus.json'
-with open(corpus_json_file , 'r') as data_file:
+
+# Load the JSON file
+with open(corpus_json_file, 'r') as data_file:
     json_data = data_file.read()
 
 data = json.loads(json_data)
 documents = list(data.keys())
 texts = list(data.values())
 
-#print some basic stats of corpus
-print( "number of documents:",len(documents))
+# Print some basic statistics about the corpus
+print("Number of documents:", len(documents))
 sizes = [len(el) for el in texts]
-av = round(sum(sizes) / len(sizes))
-print("mean of tokens size per doc:",round(statistics.mean(sizes)))
-print("median of tokens size per doc:",statistics.median(sizes))
+print("Mean size of tokens per document:", round(statistics.mean(sizes)))
+print("Median size of tokens per document:", statistics.median(sizes))
 ```
 
-Generate the Topic Model
+### 3. Generate the Topic Model
 
-```python
-## we create an instance of the sbmtm-class
+Next, generate the topic model using the SBM approach. This step consists of creating a word-document graph from your data and fitting the model.
+``` python
+# Create an instance of the sbmtm class
 model = sbmtm()
 
-## we have to create the word-document network from the corpus
-model.make_graph(texts,documents=documents)
+# Create the word-document network from the corpus
+model.make_graph(texts, documents=documents)
 
-## we can also skip the previous step by saving/loading a graph
-# model.save_graph(filename = 'graph.xml.gz')
-# model.load_graph(filename = 'graph.xml.gz')
+# Optional: Save or load the graph for faster model reuse
+# model.save_graph(filename='graph.xml.gz')
+# model.load_graph(filename='graph.xml.gz')
 
+# Fit the model with a default seed for reproducibility
 seed = 32
-## fit the model default seed 32
-gt.seed_rng(seed) ## seed for graph-tool's random number generator --> same results
+gt.seed_rng(seed)  # Seed for Graph-tool's random number generator
+model.fit(n_init=5)
 
-model.fit(n_init = 5)
-
-#saving model to load again if needed
-model.save_graph(filename = 'graph.xml.gz')
+# Save the graph and model for future use
+model.save_graph(filename='graph.xml.gz')
 with open('model.pickle', 'wb') as handle:
     pickle.dump(model, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-#paths to save the cluster file
-
 ```
 
-Generate the clusters files
+### 4. Generate Topic Clusters
 
-```python
+Finally, generate topic clusters from the fitted model. These clusters represent the topics identified in your dataset, organized hierarchically. The cluster information can be exported to CSV files for downstream analysis.
+``` python
+from datetime import datetime
+
+# Generate a unique path based on the current date
 today = datetime.today().strftime('%Y%m%d')
 
-#### uncomment the following code block to save the level 0
+# Uncomment this block to save clusters for level 0
 """
-print("saving level 0")
-path_zero = 'SBM_topics_'+today+'/level_zero/'
+print("Saving level 0 clusters...")
+path_zero = 'SBM_topics_' + today + '/level_zero/'
 if not os.path.exists(path_zero):
-  os.makedirs(path_zero)
-model.clusters(l=0,n=9999)
-model.print_topics(l=0,format='csv', path_save=path_one)
+    os.makedirs(path_zero)
+model.clusters(l=0, n=9999)
+model.print_topics(l=0, format='csv', path_save=path_zero)
 """
-#gerating the clusters of level 1
-print("saving level 1")
-path_one = 'SBM_topics_'+today+'/level_one/'
+
+# Generate and save clusters for level 1
+print("Saving level 1 clusters...")
+path_one = 'SBM_topics_' + today + '/level_one/'
 if not os.path.exists(path_one):
-  os.makedirs(path_one)
-model.clusters(l=1,n=9999)
-model.print_topics(l=1,format='csv', path_save=path_one)
+    os.makedirs(path_one)
+model.clusters(l=1, n=9999)
+model.print_topics(l=1, format='csv', path_save=path_one)
+
 end_time = datetime.now()
-print('Total Duration: {}'.format(end_time - start_time))
+print("Total Duration:", end_time - start_time)
 ```
 
-Use the generated file topsbm_level_1_clusters.csv in Comid
+### 5. Use the Generated Cluster File in CoMID
+After generating clusters, you will find a file named `topsbm_level_1_clusters.csv` in the output folder (e.g., `SBM_topics_<date>/level_one/`). You can use this file in CoMID for further processing and exploration.
+
+## Additional Notes
+- **Performance Tip**: For large corpora, saving/loading the graph and model can save time on subsequent runs.
+- **Reproducibility**: Setting a random seed ensures that results are consistent for multiple runs.
+- **Command Summary**: Make use of the steps above to efficiently generate topics and clusters from your data.
+
