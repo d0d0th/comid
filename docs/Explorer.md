@@ -8,15 +8,11 @@ The `Explorer` module provides tools to analyze and explore datasets containing 
 - [Statistical Output](#statistical-output)
 - [Initialization](#initialization)
 - [Methods](#methods)
-  - [data_summary()](#data_summary)
-  - [thread_interval_activity(period_type)](#thread_interval_activityperiod_type)
-  - [export_data(save_path)](#export_datasave_path)
-- [Private Utility Methods](#private-utility-methods)
-  - [_proc_thread(post_id, oc)](#_proc_threadpost_id-oc)
-  - [_proc_interval(post_id, oc_id, data, row_index, posts, periods_dict, period_type)](#_proc_intervalpost_id-oc_id-data-row_index-posts-periods_dict-period_type)
-  - [_dump_json(obj, file_name, save_path)](#_dump_jsonobj-file_name-save_path)
-  - [_dump_dataframe(df, file_name, save_path)](#_dump_dataframedf-file_name-save_path)
-  - [_period_key(timestamp, period_type)](#_period_keytimestamp-period_type)
+  - [data_summary](#data_summary)
+  - [thread_interval_activity](#thread_interval_activity)
+  - [export_data](#export_data)
+  - [Private Utility Methods](#private-utility-methods)
+- [Usage Example](#usage-example)
 
 ---
 
@@ -85,7 +81,8 @@ explorer = Explorer(cm.posts)
 
 ## Methods
 
-### `data_summary()`
+### data_summary
+`data_summary()`
 
 **Description:**  
 Prints a summary of the dataset. The summary includes:  
@@ -101,7 +98,8 @@ explorer.data_summary()
 
 ---
 
-### `thread_interval_activity(period_type)`
+### thread_interval_activity
+`thread_interval_activity(period_type)`
 
 **Description:**  
 Calculates and stores interval-based thread activity.
@@ -122,7 +120,8 @@ explorer.thread_interval_activity('m')
 
 ---
 
-### `export_data(save_path="")`
+### export_data
+`export_data(save_path="")`
 
 **Description:**  
 Exports thread statistics, author statistics, and interval activity to files.
@@ -138,76 +137,60 @@ Exports thread statistics, author statistics, and interval activity to files.
 ```python
 explorer.export_data("/path/to/save/")
 ```
+#### Private Utility Methods
+
+- `_proc_thread(post_id, oc)`:  
+  Processes thread statistics for a given post and updates the statistics recursively for each post and its replies.
+
+- `_proc_interval(post_id, oc_id, data, row_index, posts, periods_dict, period_type)`  
+  Recursively processes and updates interval-based thread activity.
+
+- `_dump_json(obj, file_name, save_path)  
+  Saves a Python object as a JSON file.
+
+- `_dump_dataframe(df, file_name, save_path)`  
+  Saves a pandas DataFrame as a CSV file.
+
+- `_period_key(timestamp, period_type)`  
+  Retrieves the period group label given a timestamp and period type.
 
 ---
 
-## Private Utility Methods
+## Usage Example
 
-### `_proc_thread(post_id, oc)`
+```python
+from comid import Comid
+from comid.explorer import Explorer
 
-**Description:**  
-Processes thread statistics for a given post and updates the statistics recursively for each post and its replies.
+# Step 1: Load Comid and JSON files
+cm = Comid()
+files = ['submissions.json', 'comments.json']
+cm.load_json_files(files=files)
 
-**Parameters:**  
-- `post_id` (`str`): The ID of the post to process.  
-- `oc` (`str`): The ID of the original content (OC) to which the post belongs.
+# Step 2: Initialize Explorer with loaded posts
+explorer = Explorer(cm.posts)
 
----
+# Step 3: Display a summary of the dataset
+explorer.data_summary()
 
-### `_proc_interval(post_id, oc_id, data, row_index, posts, periods_dict, period_type)`
+# Step 4: Access and print different statistical objects
 
-**Description:**  
-Recursively processes and updates interval-based thread activity.
+# Author statistics dictionary (author contributions and posts)
+print("Author Statistics:", explorer.authors_stats)
 
-**Parameters:**  
-- `post_id` (`str`): The ID of the current post being processed.  
-- `oc_id` (`str`): The ID of the original content (OC) to which the post belongs.  
-- `data` (`list`): A 2D list representing the interval activity matrix.  
-- `row_index` (`int`): The current row index in the interval activity matrix.  
-- `posts` (`dict`): Dictionary containing post data.  
-- `periods_dict` (`dict`): Mapping of period labels to column indices in the interval activity matrix.  
-- `period_type` (`str`): Period type for grouping posts (options: `'d'`, `'w'`, `'f'`, `'m'`, `'q'`, `'y'`).  
+# Thread replies dictionary (list of comment IDs for each thread)
+print("Thread Replies:", explorer.thread_replies)
 
----
+# Thread statistics dictionary (detailed stats for each thread)
+print("Thread Statistics:", explorer.threads_stats)
 
-### `_dump_json(obj, file_name, save_path)`
+# Thread interval activity dictionary (activity grouped by time periods)
+print("Thread Interval Activity:", explorer.thread_activity)
 
-**Description:**  
-Saves a Python object as a JSON file.
+# Pandas DataFrame for thread interval activity
+print("Thread Interval Activity DataFrame:")
+print(explorer.df_interval_activity)
 
-**Parameters:**  
-- `obj` (`dict` or `list`): The Python object to be serialized and saved.  
-- `file_name` (`str`): The name of the output file (with `.json` extension).  
-- `save_path` (`str`): The directory where the file will be saved.
-
----
-
-### `_dump_dataframe(df, file_name, save_path)`
-
-**Description:**  
-Saves a pandas DataFrame as a CSV file.
-
-**Parameters:**  
-- `df` (`pandas.DataFrame`): The DataFrame to be saved.  
-- `file_name` (`str`): The name of the output file (with `.csv` extension).  
-- `save_path` (`str`): The directory where the file will be saved.
-
----
-
-### `_period_key(timestamp, period_type)`
-
-**Description:**  
-Retrieves the period group label given a timestamp and period type.
-
-**Parameters:**  
-- `timestamp` (`float`): The UTC timestamp.  
-- `period_type` (`str`): The period type for grouping posts. Available options:  
-  - `'d'`: Days  
-  - `'w'`: Weeks  
-  - `'f'`: Fortnights  
-  - `'m'`: Months  
-  - `'q'`: Quarters  
-  - `'y'`: Years  
-
-**Returns:**  
-`str`: The formatted period label.
+# Step 5: Export all statistical data to files
+explorer.export_data()
+```
