@@ -19,10 +19,23 @@ import math
 
 class Comid:
     """
-    The Comid class
+    The Comid class represents a tool for processing, cleaning, analyzing, and organizing Reddit data.
+    It provides functions for loading data, cleaning posts, generating corpora, reducing data size, and analyzing content.
     """
 
     def __init__(self):
+        """
+        Initializes an instance of the Comid class with default attributes.
+        Attributes:
+            words_map (dict): A map for words (currently unused).
+            corpus (dict): The full corpus of processed documents.
+            corpus_reduced (dict): A reduced version of the corpus.
+            posts (dict): Loaded Reddit posts.
+            stopwords (list): List of stopwords.
+            df_clusters (pd.DataFrame): Dataframe containing cluster information.
+            df_topics (pd.DataFrame): Dataframe containing topic information.
+            df_periods (pd.DataFrame): Dataframe containing grouped period data.
+        """
         self.words_map = None
         self.corpus = None
         self.corpus_reduced = None
@@ -34,12 +47,15 @@ class Comid:
 
     def load_json_files(self, files=None, folder=None):
         """
-        Load json files as comid dict object
-        :param files: List of files to be loaded. Example ['file1.json','file2.json','file3.json']. Can be omitted if
-            folder parameter informed.
-        :param folder: Path of the folder where the files to be loaded are located. If informed, all files in the folder
-            will be loaded.
-        :return: None
+        Load JSON files containing Reddit posts into the Comid object.
+
+        Parameters:
+            files (list, optional): List of file paths to load (e.g., ['file1.json', 'file2.json']).
+            folder (str, optional): Path to a folder containing multiple JSON files to load.
+                If provided, all JSON files in the folder will be loaded.
+
+        Raises:
+            Exception: If neither 'files' nor 'folder' is provided, or if both are provided at the same time.
         """
         self.posts = dict()
         if not folder and not files:
@@ -69,9 +85,13 @@ class Comid:
 
     def _retrieve_thread_ids(self, post_id):
         """
-        Internal function to retrieve all ids from a thread
-        :param post_id: id of the thread
-        :return: list of ids of the thread
+        Recursively retrieve all IDs from a thread.
+
+        Parameters:
+            post_id (str): The ID of the thread.
+
+        Returns:
+            list: A list of all IDs in the thread.
         """
         ids = list()
         if post_id in self.posts:
@@ -84,11 +104,16 @@ class Comid:
         return ids
     def clean_data(self, remove_no_content=True, remove_no_author=True, keywords=[], boundary_keywords=False):
         """
-        Function to clean the data.
-        :param remove_no_content: Remove posts without content
-        :param remove_no_author: Remove posts without author
-        :param keywords: Remove posts that contains any of keywords
-        :param boundary_keywords: Used only if keywords is set. If False, will search for substrings of any keywords
+        Clean the data by removing posts that match specific criteria.
+
+        Parameters:
+            remove_no_content (bool): If True, remove posts without meaningful content.
+            remove_no_author (bool): If True, remove posts with no author information.
+            keywords (list): List of keywords to filter posts. Posts containing these keywords will be removed.
+            boundary_keywords (bool): If True, only remove posts with exact keyword matches; otherwise, allow partial matches.
+
+        Returns:
+            None
         """
         keys_to_remove = set()
         before_clean = len(self.posts)
@@ -134,11 +159,14 @@ class Comid:
 
     def generate_corpus(self, use_lemmas=True, include_comments=False):
         """
-        Generates the corpus with the list of tokens from each document
-        :param use_lemmas: If True will lemmatize the tokens, if false will stemm the tokens. The default is use_lemmas
-            set as True
-        :param include_comments: Informs if will include te texts of the comments in document.
-        :return: None
+        Generate a corpus from the loaded data by tokenizing, cleaning, and optionally lemmatizing the text.
+
+        Parameters:
+            use_lemmas (bool): If True, lemmatize tokens; otherwise, apply stemming.
+            include_comments (bool): If True, include comments in the corpus; otherwise, only use main posts.
+
+        Returns:
+            None
         """
         oc_dict = dict(filter(lambda e: 'parent_id' not in e[1] and e[1]['selftext'] not in ["[removed]", "[deleted]"],
                               tqdm(self.posts.items(), desc="Filtering content")))
@@ -177,19 +205,20 @@ class Comid:
     def reduce_corpus(self, target_size=6000, optimize_num_interactions=True, min_op_length=0,
                       min_num_interactions=0):
         """
-        Reduce the corpus closest to a target size. The function find a minimal value for number of interactions
-        (the total number of comments and replies in original post) or the op length (number of tokens in original
-        post) and reduce the corpus removing all documents that not satisfact the minimal value calculated.
+        Reduce the corpus to a target size by filtering based on minimum interaction count or post length.
 
-        :param target_size: The target corpus size.
-        :param optimize_num_interactions: If True reduce the corpus calculating a mínimal value for number of
-        interactions (the total number of comments and replies in original post). If False reduce the corpus calculating
-        a mínimal value for op length (number of tokens in original post)
-        :param min_op_length: The minimal op lenght (number of tokens in original post) to filter the corpus. Only have
-        effect if optimize_num_interactions is True.
-        :param min_num_interactions: The minimal number of interactions (the total number of comments and replies in
-        original post) to filter the corpus. Only have effect if optimize_num_interactions is False.
-        :return: None
+        Parameters:
+            target_size (int): Desired size of the reduced corpus.
+            optimize_num_interactions (bool): If True, filter by minimum number of interactions (comments and replies).
+                                             If False, filter by minimum original post length (in tokens).
+            min_op_length (int): Minimum original post length (in tokens) for filtering. Only used if optimize_num_interactions is False.
+            min_num_interactions (int): Minimum number of interactions for filtering. Only used if optimize_num_interactions is True.
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If target_size is less than or equal to zero.
         """
 
         corpus = self.corpus
@@ -236,11 +265,14 @@ class Comid:
 
     def save(self, save_path="", file_name=""):
         """
-        Save the Comid object with current state and data
-        :param save_path: The path to save the comid file. If not informed will be saved in current default path.
-        :param file_name: The comid file name. If not informed will generate a file with the pattern name
-            "comid_"+UTC_TIMESTAMP+".pickle"
-        :return: None
+        Save the current state of the Comid object to a pickle file.
+
+        Parameters:
+            save_path (str): The directory where the file will be saved. Defaults to the current directory.
+            file_name (str): The name of the file. If not provided, a default name is generated.
+
+        Returns:
+            None
         """
         if not file_name:
             now = datetime.now()
@@ -255,21 +287,28 @@ class Comid:
     @classmethod
     def load(cls, file):
         """
-        Load the comid object from a saved file
-        :param file: The comid object file to be loaded. Can be used with relative or full path.
-        :return: The comid object
+        Load a Comid object from a pickle file.
+
+        Parameters:
+            file (str): The path to the pickle file.
+
+        Returns:
+            Comid: The loaded Comid object.
         """
         with open(file, 'rb') as f:
             return pickle.load(f)
 
     def save_corpus(self, reduced=False, save_path="", file_name=""):
         """
-        Save the corpus as a json file.
-        :param reduced: If True will save the reduced corpus, if False will save the full corpus
-        :param save_path: The path to save the corpus file. If not informed will be saved in current default path.
-        :param file_name: The corpus file name. If not informed will generate a file with the pattern name
-            "corpus_"+UTC_TIMESTAMP+".json"
-        :return: None
+        Save the current corpus as a JSON file.
+
+        Parameters:
+            reduced (bool): If True, save the reduced corpus; otherwise, save the full corpus.
+            save_path (str): Directory where the file will be saved. Defaults to the current directory.
+            file_name (str): The name of the file. If not provided, a default name is generated.
+
+        Returns:
+            None
         """
 
         corpus = self.corpus_reduced if reduced else self.corpus
@@ -285,29 +324,40 @@ class Comid:
 
     def load_corpus(self, file):
         """
-        Load the corpus json file
-        :param file: The corpus file to be loaded. Can be used with relative or full path.
-        :return: None
+        Load a corpus from a JSON file.
+
+        Parameters:
+            file (str): The path to the JSON file.
+
+        Returns:
+            None
         """
         with open(file, "r", encoding="utf-8") as f:
             self.corpus = json.load(f)
 
     def load_clusters_file(self, file):
         """
-        Load the clusters file and create the df_cluster dataframe
-        :param file: The csv file path + name to be loaded. Can be used relative or full path.
-        :return:
+        Load a CSV file containing cluster information into a DataFrame.
+
+        Parameters:
+            file (str): The path to the CSV file.
+
+        Returns:
+            None
         """
         self.df_clusters = pd.read_csv(file)
 
     def print_cluster_samples(self, cluster, n_samples=10, max_depth=0):
         """
-        Print random samples from a cluster
-        :param cluster:  The cluster to analyze
-        :param max_depth: The maximum depth of replies to retrieve given a doc id. If max_depth = 0 will retrieve only
-        the OC
-        :param n_samples: The number of samples. Default is 10
-        :return: None
+        Print random samples from a specified cluster.
+
+        Parameters:
+            cluster (str): The cluster to analyze.
+            n_samples (int): The number of random samples to print. Default is 10.
+            max_depth (int): The maximum depth of replies to retrieve for each sample. Default is 0 (only OC).
+
+        Returns:
+            None
         """
 
         ids = random.sample(list(self.df_clusters[cluster].dropna().to_list()), n_samples)
@@ -320,11 +370,14 @@ class Comid:
 
     def save_clusters_summary(self, save_path="", file_name=""):
         """
-        Save the cluster csv summary file
-        :param save_path: The path to save the file. If not informed will be saved in current default path.
-        :param file_name: The cluster stats file name. If not informed will generate a file with the pattern
-            "clusters_summary_"+UTC_TIMESTAMP+".csv"
-        :return: None
+        Save a summary of cluster statistics as a CSV file.
+
+        Parameters:
+            save_path (str): Directory where the file will be saved. Defaults to the current directory.
+            file_name (str): The name of the file. If not provided, a default name is generated.
+
+        Returns:
+            None
         """
         total = 0
         header = ['Cluster', 'Num Docs', 'Percent', 'Topic']
@@ -349,13 +402,14 @@ class Comid:
 
     def build_topics(self, topics_file=None, min_percent=10):
         """
-        Creates the topics conversation dataframe. The dataframe can be created from a csv file with the topics
-        anotation.
-        :param topics_file: The label csv file. When informed it will be considered only the topics that have informed
-        in file.
-        :param min_percent: The minimal percent of documents in a cluster to consider the cluster as a topic in
-        dataframe. If label file informed, this parameter will be ignored.
-        :return: None
+        Create a topics conversation DataFrame.
+
+        Parameters:
+            topics_file (str, optional): Path to a CSV file containing topic annotations. If provided, only annotated topics are considered.
+            min_percent (int): Minimum percentage of documents in a cluster to consider it a topic. Ignored if topics_file is provided.
+
+        Returns:
+            None
         """
         topics = dict()
         if topics_file:
@@ -402,11 +456,19 @@ class Comid:
     @staticmethod
     def _retrieve_period(timestamp, period_type):
         """
-        Retrieve the period group label given a timestamp and period type
-        :param timestamp: The utc timestamp
-        :param period_type: The period to group the topics. Can be 'd' for days, 'w' for weeks, 'm' for months and
-        'y' for years
-        :return:
+        Retrieve a period group label based on the given timestamp and period type.
+
+        Parameters:
+            timestamp (int): The UTC timestamp to convert into a period group.
+            period_type (str): The type of period to group by. Options are:
+                              - 'd' for days (e.g., '2025-02-09')
+                              - 'w' for weeks (e.g., '2025-06')
+                              - 'm' for months (e.g., '2025-02')
+                              - 'y' for years (e.g., '2025')
+
+        Returns:
+            str: The formatted period label (e.g., '2025-02' for monthly grouping).
+            None: If the period_type is invalid.
         """
         dt = datetime.fromtimestamp(timestamp)
         per = period_type.lower()
@@ -424,10 +486,26 @@ class Comid:
 
     def group_by_period(self, period_type="m"):
         """
-        Group the topics in a given period updating the period column in df_topics and generating the df_periods
-        :param period_type: The period to group the topics. Can be 'd' for days, 'w' for weeks, 'm' for months and
-        'y' for years
-        :return: None
+        Group topics by a specified time period and update the period column in df_topics while generating df_periods.
+
+        Parameters:
+            period_type (str): The time period for grouping topics. Accepted values are:
+                              - 'd' for daily grouping (e.g., '2025-02-09')
+                              - 'w' for weekly grouping (e.g., '2025-06')
+                              - 'm' for monthly grouping (e.g., '2025-02')
+                              - 'y' for yearly grouping (e.g., '2025')
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If the period_type is not one of the accepted values ('d', 'w', 'm', 'y').
+
+        Notes:
+            - The method updates the `df_topics` DataFrame with a new 'period' column containing the grouped time period.
+            - The `df_periods` DataFrame is generated to store aggregated data such as new threads, replies, and topic frequency per period.
+            - This method also builds indices for words, topics, and periods for further analysis.
+
         """
         per = period_type.lower()
         if per == "d":
