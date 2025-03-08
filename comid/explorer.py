@@ -121,6 +121,8 @@ class Explorer:
             post_id (str): The ID of the post to process.
             oc (str): The ID of the original content (OC) to which the post belongs.
         '''
+        if post_id not in self.posts:
+            return
         post = self.posts[post_id]
         author_id = post['author_id']
 
@@ -147,10 +149,10 @@ class Explorer:
                 self.threads_stats[oc]['author_count'] += 1
                 self._thread_authors[oc].add(author_id)
 
+        # replies list
+        if oc not in self.thread_replies:
+            self.thread_replies[oc] = []
         if 'replies' in post:
-            #replies list
-            if oc not in self.thread_replies:
-                self.thread_replies[oc] = []
             if post_id != oc:
                 self.thread_replies[oc].append(post_id)
 

@@ -188,6 +188,17 @@ class RedditCollector:
                     count_retry += 1
                     time.sleep(30)
                     print("Retrying submission ", doc_id, "attempts retry count: ", count_retry)
+                except prawcore.exceptions.TooManyRequests as e:
+                    # wait for 1 hour since sending more requests to overloaded server
+                    last_exception = e
+                    print("Reddit server response 429 - Too Many Requests")
+                    print("Waiting 1 hour to retry the request")
+                    count_retry += 1
+                    for i in range(3660, 0, -1):
+                        print(f"{i} seconds", end="\r", flush=True)
+                        time.sleep(1)
+
+                    print("Retrying submission ", doc_id, "attempts retry count: ", count_retry)
 
         print("saved submissions file "+file_submissions)
         print("saved comments file " + file_comments)
