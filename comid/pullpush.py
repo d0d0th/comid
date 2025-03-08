@@ -1,4 +1,5 @@
 import requests
+import time
 
 class PullPushApi:
     """
@@ -23,7 +24,17 @@ class PullPushApi:
                 query+="&"
             query+=str(k)+"="+str(v)
         api_url = self.api_submssion_url+query
-        response = requests.get(api_url)
+        retry = True
+        while retry:
+            retry = False
+            try:
+                response = requests.get(api_url)
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                retry = True
+                print("PullPush server response error:", e.response.status_code)
+                print("Waiting 60 seconds to retry the request")
+                time.sleep(60)
         return response.json()['data']
 
 
