@@ -243,7 +243,7 @@ Reduce the corpus to a target size by filtering based on interaction count or po
 
 **Parameters:**  
 - `target_size` (int): Desired size of the reduced corpus.  
-- `optimize_num_interactions` (bool): Filter by number of interactions if True; otherwise, by post length.  
+- `optimize_num_interactions` (bool): If True, optimize the number of interactions (comments and replies). If False, optimize the original post length (in tokens).  
 - `min_op_length` (int): Minimum post length for filtering.  
 - `min_num_interactions` (int): Minimum number of interactions for filtering.  
 

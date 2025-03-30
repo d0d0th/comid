@@ -209,8 +209,8 @@ class Comid:
 
         Parameters:
             target_size (int): Desired size of the reduced corpus.
-            optimize_num_interactions (bool): If True, filter by minimum number of interactions (comments and replies).
-                                             If False, filter by minimum original post length (in tokens).
+            optimize_num_interactions (bool): If True, optimize the number of interactions (comments and replies).
+                                             If False, optimize the original post length (in tokens).
             min_op_length (int): Minimum original post length (in tokens) for filtering. Only used if optimize_num_interactions is False.
             min_num_interactions (int): Minimum number of interactions for filtering. Only used if optimize_num_interactions is True.
 
