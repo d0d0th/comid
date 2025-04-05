@@ -64,7 +64,8 @@ class Comid:
             raise Exception(
                 "Inform just one of parameters files path array or foder path. You can't inform both at same time.")
         if not files:
-            files = [f for f in os.listdir(folder)]
+            path = folder + '/' if not (folder.endswith('/') or folder.endswith('\\')) else folder
+            files = [path + f for f in os.listdir(folder) if os.path.isfile(path + f)]
             # files = [f for f in os.listdir(folder) if '.json']
 
         for file in tqdm(files, desc="Loading...", position=0):
@@ -454,35 +455,46 @@ class Comid:
         return
 
     @staticmethod
-    def _retrieve_period(timestamp, period_type):
+    def period_key(timestamp, period_type):
         """
-        Retrieve a period group label based on the given timestamp and period type.
+        Retrieve the period group label given a timestamp and period type.
 
         Parameters:
-            timestamp (int): The UTC timestamp to convert into a period group.
-            period_type (str): The type of period to group by. Options are:
-                              - 'd' for days (e.g., '2025-02-09')
-                              - 'w' for weeks (e.g., '2025-06')
-                              - 'm' for months (e.g., '2025-02')
-                              - 'y' for years (e.g., '2025')
+            timestamp (float): The UTC timestamp.
+            period_type (str): The period type for grouping posts.
+                              Options: 'd' (days), 'w' (weeks), 'f' (fortnight),
+                                       'm' (months), 'q' (quarters), 'y' (years)
 
         Returns:
-            str: The formatted period label (e.g., '2025-02' for monthly grouping).
-            None: If the period_type is invalid.
+            str: The formatted period label.
         """
         dt = datetime.fromtimestamp(timestamp)
         per = period_type.lower()
         if per == "d":
-            period_key = dt.strftime('%Y-%m-%d')
+            key = dt.strftime('%Y-%m-%d')
         elif per == "w":
-            period_key = dt.strftime('%Y-%W')
+            key = dt.strftime('%Y-%W')
         elif per == "m":
-            period_key = dt.strftime('%Y-%m')
+            key = dt.strftime('%Y-%m')
+        elif per == "f":
+            key = dt.strftime('%Y-%m') + ('-F1' if dt.day < 15 else '-F2')
+        elif per == "q":
+            key = dt.strftime('%Y')
+            if dt.month < 4:
+                key += '-Q1'
+            elif dt.month < 7:
+                key += '-Q2'
+            elif dt.month < 10:
+                key += '-Q3'
+            else:
+                key += '-Q4'
         elif per == "y":
-            period_key = dt.strftime('%Y')
+            key = dt.strftime('%Y')
         else:
-            period_key = None
-        return period_key
+            raise Exception("Invalid period_type. Available options are 'd' for days, 'w' for weeks,"
+                            "'f' for fortnight, 'm' for months, 'q' for quarters or "
+                            "'y' for years")
+        return key
 
     def group_by_period(self, period_type="m"):
         """
@@ -521,7 +533,7 @@ class Comid:
 
         tqdm.pandas(desc="periods")
         self.df_topics['period'] = self.df_topics['created_utc'].progress_apply(
-            lambda e: self._retrieve_period(e, period_type))
+            lambda e: self.period_key(e, period_type))
         tqdm.pandas(desc="tokens")
         self.df_topics['tokenized'] = self.df_topics.progress_apply(
             lambda e: self.corpus[e.name] if e.name in self.corpus else [], axis=1)
