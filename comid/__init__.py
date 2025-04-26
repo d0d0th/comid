@@ -4,7 +4,6 @@ import os
 from datetime import datetime
 import redditcleaner as rc
 import contractions
-import nltk
 import re
 import spacy
 from tqdm import tqdm
@@ -15,6 +14,7 @@ import pickle
 import numpy as np
 from itertools import chain
 import math
+from collections import Counter, defaultdict
 
 
 class Comid:
@@ -45,6 +45,8 @@ class Comid:
         self.df_topics = None
         self.df_periods = None
 
+
+
     def load_json_files(self, files=None, folder=None):
         """
         Load JSON files containing Reddit posts into the Comid object.
@@ -74,7 +76,7 @@ class Comid:
                 for d in data:
                     text = ''
                     if 'title' in d:
-                        text += d['title'] + " "
+                        text += d['title'] + "\n"
                     if 'selftext' in d:
                         text += d['selftext']
                     if 'body' in d:
@@ -158,17 +160,19 @@ class Comid:
         else:
             print("Nothing to clean")
 
-    def generate_corpus(self, use_lemmas=True, include_comments=False):
+    def generate_corpus(self, use_lemmas=True, include_comments=False,model="en_core_web_sm"):
         """
         Generate a corpus from the loaded data by tokenizing, cleaning, and optionally lemmatizing the text.
 
         Parameters:
             use_lemmas (bool): If True, lemmatize tokens; otherwise, apply stemming.
             include_comments (bool): If True, include comments in the corpus; otherwise, only use main posts.
+            model (str): The model to use for tokenization. Default: "en_core_web_sm".
 
         Returns:
             None
         """
+        self.spacy_load(model)
         oc_dict = dict(filter(lambda e: 'parent_id' not in e[1] and e[1]['selftext'] not in ["[removed]", "[deleted]"],
                               tqdm(self.posts.items(), desc="Filtering content")))
 
@@ -179,25 +183,21 @@ class Comid:
                        tqdm(self.posts.items(), desc="Filtering comments")))
 
             for key in tqdm(filtered_comments.keys(), desc="Adding comments"):
-                oc_dict[filtered_comments[key]['parent_id']]['full_text'] += " " + filtered_comments[key]['full_text']
+                oc_dict[filtered_comments[key]['parent_id']]['full_text'] += "\n" + filtered_comments[key]['full_text']
 
-        oc = list(
-            map(lambda e: [e[0], rc.clean(e[1]['full_text'])], tqdm(oc_dict.items(), desc="Cleaning reddit marks")))
-
-        oc = list(map(lambda e: [e[0], contractions.fix(e[1]).lower()], tqdm(oc, desc="Apping contractions")))
-        oc = list(
-            map(lambda e: [e[0], re.sub(r'[\W\d_]+', ' ', e[1]).split()], tqdm(oc, desc="Removing non-aplhanumerics")))
-
-        nltk.download('stopwords')
-        self.stopwords = nltk.corpus.stopwords.words('english')
-        oc = list(map(lambda e: [e[0], self._filter_stopwords(e[1])], tqdm(oc, desc="Filtering stopwords")))
-
-        # !python -m spacy download en
         if use_lemmas:
-            nlp = spacy.load('en_core_web_sm')
-            oc = list(map(lambda e: [e[0], self._lemmatize(e[1], nlp)], tqdm(oc, desc="Lemmatizing")))
+            oc = list(
+                map(lambda e: [e[0], e[1]['full_text']], oc_dict.items()))
+            oc = list(map(lambda e: [e[0], self.text_tokenizer(e[1])], tqdm(oc, desc="Tokenizing")))
         else:
             stemmer = SnowballStemmer(language='english')
+            oc = list(
+                map(lambda e: [e[0], rc.clean(e[1]['full_text'])], tqdm(oc_dict.items(), desc="Cleaning reddit marks")))
+            oc = list(map(lambda e: [e[0], self._filter_stopwords(e[1])], tqdm(oc, desc="Filtering stopwords")))
+            oc = list(map(lambda e: [e[0], contractions.fix(e[1]).lower()], tqdm(oc, desc="Apping contractions")))
+            oc = list(
+                map(lambda e: [e[0], re.sub(r'[\W\d_]+', ' ', e[1]).split()],
+                    tqdm(oc, desc="Removing non-aplhanumerics")))
             oc = list(map(lambda e: [e[0], self._steems(e[1], stemmer)], tqdm(oc, desc="Stemming")))
 
         self.corpus = dict(
@@ -806,3 +806,134 @@ class Comid:
                         text += self.retrieve_conversation(reply, max_depth, include_author_id, include_created, level)
 
         return text
+
+    @staticmethod
+    def g_squared(f_xy, f_x, f_y, N):
+        """
+        Calculates the G-squared statistic for measuring word association strength.
+
+        Parameters:
+            f_xy (int): Frequency of the word pair (bigram).
+            f_x (int): Frequency of the first word in the bigram.
+            f_y (int): Frequency of the second word in the bigram.
+            N (int): Total number of tokens in the dataset.
+
+        Returns:
+            float: The G-squared statistic for the given word pair.
+        """
+        return 2 * f_xy * math.log((f_xy * N) / (f_x * f_y))
+
+    @staticmethod
+    def npmi(f_xy, f_x, f_y, N):
+        """
+        Computes the Normalized Pointwise Mutual Information (NPMI) for scoring bigrams.
+
+        Parameters:
+            f_xy (int): Frequency of the word pair (bigram).
+            f_x (int): Frequency of the first word in the bigram.
+            f_y (int): Frequency of the second word in the bigram.
+            N (int): Total number of tokens in the dataset.
+
+        Returns:
+            float: NPMI value indicating the association strength between the words.
+        """
+        p_xy, p_x, p_y = f_xy / N, f_x / N, f_y / N
+        return (math.log(p_xy / (p_x * p_y)) / -math.log(p_xy))
+
+    def text2dict(self,text: str, *,
+                  keep_patterns={("ADJ", "NOUN"), ("NOUN", "NOUN"), ("PROPN", "PROPN")}):
+        """
+        Processes text to extract tokens grouped by POS and generates phrases using bigrams.
+
+        Parameters:
+            text (str): The input text for processing.
+            keep_patterns (set): POS patterns for bigrams to retain (default: {("ADJ", "NOUN"), ("NOUN", "NOUN"), ("PROPN", "PROPN")}).
+
+        Returns:
+            dict: A dictionary with POS groups and phrases:
+                - Keys are POS tags (e.g., "NOUN", "VERB").
+                - "PHRASE" key contains valid bigrams as phrases (if applicable).
+        """
+
+        # 1. clean reddit marks
+        raw = rc.clean(text)
+
+        #1.1 expand contractions if language is english
+        if self.nlp.lang == "en":
+            raw = contractions.fix(raw).lower()
+        doc = self.nlp(raw)
+
+        tokens_by_pos = defaultdict(list)
+        unigram = Counter()
+        bigram = Counter()
+
+        # 2–3. POS‑filter tokens & collect counts
+        for sent in doc.sents:
+            sent_tokens = []
+            for tok in sent:
+                if tok.is_stop or tok.is_punct or tok.like_url or tok.like_num:
+                    continue
+                lemma = tok.lemma_.lower()
+                pos = tok.pos_
+                if pos in {"NOUN", "VERB", "ADJ", "PROPN"}:
+                    tokens_by_pos[pos].append(lemma)
+                    sent_tokens.append((lemma, pos))
+                    unigram[lemma] += 1
+            # 4. bigram scan inside sentence
+            for (w1, p1), (w2, p2) in zip(sent_tokens, sent_tokens[1:]):
+                if (p1, p2) in keep_patterns:
+                    bigram[(w1, w2)] += 1
+
+        # 4b. score bigrams (single‑post mode: drop stats tests)
+        N = sum(unigram.values())  # total tokens for NPMI
+        phrases = []
+        for (w1, w2), f_xy in bigram.items():
+            f_x, f_y = unigram[w1], unigram[w2]
+            if f_xy >= 1:  # frequency floor disabled here
+                if self.npmi(f_xy, f_x, f_y, N) >= 0.2:
+                    phrases.append(f"{w1}_{w2}")
+
+        # 5. build JSON
+        out = {pos: sorted(set(lst)) for pos, lst in tokens_by_pos.items()}
+        if phrases:
+            out["PHRASE"] = sorted(set(phrases))
+        return out
+
+    def text_tokenizer(self,text, tags=["NOUN", "VERB", "ADJ", "PROPN"], min_size=3):
+        """
+        Tokenizes text and filters it based on specified POS tags and size constraints.
+
+        Parameters:
+            text (str): The input text to tokenize.
+            tags (list): POS tags to retain in the output (default: ["NOUN", "VERB", "ADJ", "PROPN"]).
+            min_size (int): Minimum size of tokens for inclusion (default: 3).
+
+        Returns:
+            list: A list of processed and filtered tokens.
+        """
+        tokens_dict = self.text2dict(text)
+        tokens = [ token for tag in tags if tag in tokens_dict
+                 for token in tokens_dict[tag]]
+        if min_size:
+            tokens = self._filter_small_words(tokens, min_size)
+        # remove non-alphanumeric
+        tokens = re.sub(r'[\W\d_]+', ' ', ' '.join(tokens)).split()
+        return tokens
+
+
+    def spacy_load(self,model):
+        """
+        Loads a SpaCy language model for POS tagging and text processing.
+
+        Parameters:
+            model (str): The name of the SpaCy language model to load.
+
+        Returns:
+            None
+        """
+        self.nlp = spacy.load(model, disable=["ner", "parser"])
+        self.stopwords = spacy.lang.en.stop_words.STOP_WORDS
+        # Insert a rule–based sentence segmenter **after** the tokenizer:
+        if "sentencizer" not in self.nlp.pipe_names:
+            self.nlp.add_pipe("sentencizer")
+

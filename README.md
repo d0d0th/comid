@@ -10,6 +10,7 @@
 - Generate a corpus based on the original content (O.C.) of Reddit threads.
 - Assist in annotating topics within pre-grouped conversation clusters.
 - Perform temporal analysis to track the evolution of topics over time.
+- Integrate with [Convokit](https://github.com/CornellNLP/ConvoKit)
 
 ### What COMID Does Not Do:
 - COMID does **not** perform topic modeling directly. For that, consider using the complementary [hSBM Topic Model](https://github.com/martingerlach/hSBM_Topicmodel).
@@ -19,6 +20,7 @@ Comprehensive documentation is available for each module:
 - [Comid](docs/Comid.md)
 - [Collector](docs/RedditCollector.md)
 - [Explorer](docs/Explorer.md)
+- [ConvoBridge](docs/ConvoBridge.md)
 
 ## **Quick Start**
 
