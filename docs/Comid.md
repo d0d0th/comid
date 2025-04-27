@@ -19,6 +19,11 @@
   - [load](#load)
   - [save_corpus](#save_corpus)
   - [load_corpus](#load_corpus)
+  - [g_squared](#g_squared)
+  - [npmi](#npmi)
+  - [text2dict](#text2dict)
+  - [text_tokenizer](#text_tokenizer)
+  - [spacy_load](#spacy_load)
   - [load_clusters_file](#load_clusters_file)
   - [print_cluster_samples](#print_cluster_samples)
   - [save_clusters_summary](#save_clusters_summary)
@@ -234,6 +239,7 @@ Generate a corpus from the loaded data by tokenizing, cleaning, and optionally l
 **Parameters:**  
 - `use_lemmas` (bool): Lemmatize tokens if True; otherwise, apply stemming.  
 - `include_comments` (bool): Include comments in the corpus if True.
+- `model` (str): The spacy model to use for tokenization. Default: `en_core_web_sm`.
 
 ---
 
@@ -291,6 +297,74 @@ Load a corpus from a JSON file.
 
 **Parameters:**  
 - `file` (str): Path to the JSON file.  
+
+---
+
+### g_squared
+`g_squared(f_xy, f_x, f_y, N)`
+Calculates the G-squared statistical measure to evaluate word association strength in bigrams.
+
+**Parameters:**
+- `f_xy` (int): Frequency of the word pair (bigram).
+- `f_x` (int): Frequency of the first word in the bigram.
+- `f_y` (int): Frequency of the second word in the bigram.
+- `N` (int): Total number of tokens in the dataset.
+
+**Returns:**
+- `float`: The G-squared statistic for the given word pair.
+
+---
+
+### npmi
+`npmi(f_xy, f_x, f_y, N)`
+Computes the Normalized Pointwise Mutual Information (NPMI) metric to score bigram associations based on their statistical significance.
+
+**Parameters:**
+- `f_xy` (int): Frequency of the word pair (bigram).
+- `f_x` (int): Frequency of the first word in the bigram.
+- `f_y` (int): Frequency of the second word in the bigram.
+- `N` (int): Total number of tokens in the dataset.
+
+**Returns:**
+- `float`: NPMI value indicating the association strength between the two words.
+
+---
+
+### text2dict
+`text2dict(text, keep_patterns={("ADJ", "NOUN"), ("NOUN", "NOUN"), ("PROPN", "PROPN")})`
+Processes input text to extract tokens grouped by parts of speech (POS), and generates phrases by scoring bigrams using NPMI.
+
+**Parameters**
+- `text` (str): The input text to process.
+- `keep_patterns` (set): POS tag patterns for bigrams to retain (default: `{("ADJ", "NOUN"), ("NOUN", "NOUN"), ("PROPN", "PROPN")}`).
+
+**Returns:**
+  - `dict`: A dictionary with the following structure:
+  - POS groups: Keys represent POS tags (e.g., `"NOUN"`, `"VERB"`) and values are lists of unique tokens.
+  - `PHRASE`: Contains meaningful bigrams combined into phrases (if applicable).
+
+---
+
+### text_tokenizer
+`text_tokenizer(text, tags=["NOUN", "VERB", "ADJ", "PROPN"], min_size=3)`
+Tokenizes and filters text based on specified POS tags and minimum token size.
+
+**Parameters:**
+- `text` (str): The text to tokenize.
+- `tags` (list): POS tags to retain (default: `["NOUN", "VERB", "ADJ", "PROPN"]`).
+- `min_size` (int): Minimum size of tokens to include (default: `3`).
+
+**Returns:**
+- **`list`**: A cleaned list of processed tokens.
+
+---
+
+### spacy_load
+`spacy_load(model)`
+Loads a SpaCy language model to facilitate text processing, including POS tagging and rule-based sentence segmentation.
+
+**Parameters:**
+- `model` (str): The name of the SpaCy language model to load.
 
 ---
 

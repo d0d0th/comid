@@ -21,17 +21,19 @@ setup(
                       'tqdm',
                       'pandas',
                       'praw>=7.7',
-                      'numpy'
+                      'numpy',
+                      'convokit>=3.1.0'
                       ],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Programming Language :: Python :: 3 :: Only",
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         "Intended Audience :: Developers",
         "Topic :: Utilities",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.9'
+    python_requires='>=3.10'
 )
