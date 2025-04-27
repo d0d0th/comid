@@ -31,7 +31,7 @@ Processes text in a Convokit corpus, applying tokenization, filtering, and optio
 - **`comid`**: Instance of the Comid dataset.
 - **`model`**: NLP language model used for tokenization (default: `"en_core_web_sm"`).
 - **`input_field`**: Field in utterances where the text input is located (default: `None`).
-- **`output_field`**: Field where processed tokens are stored (default: `"words"`).
+- **`output_field`**: Field where processed tokens are stored (default: `"parsed"`).
 - **`tags`**: POS tags to retain during tokenization (default: `["NOUN", "VERB", "ADJ", "PROPN"]`).
 - **`min_size`**: Minimum token size for inclusion in processed output (default: `3`).
 - **`include_oc`**: Whether to include Original Content in processing (default: `True`).
@@ -124,7 +124,7 @@ from comid.convobridge import ConvoTextParser
 # Initialize text parser
 convoTextParser = ConvoTextParser(
     comid=comid,
-    output_field="words",
+    output_field="parsed",
     include_oc=True,
     include_comments=True
 )
@@ -132,14 +132,14 @@ convoTextParser = ConvoTextParser(
 # Process utterances in corpus
 convo_corpus = convoTextParser.transform(convoTextParser)
 ```
-### Verify the parsed data
-Verify if the `words` metadata contains the expected processed information. A random utterance is selected using a try-except block to ensure that only utterances with the `words` metadata (top-level comments) are sampled.
+### Verify the parsed metadata
+Verify if the `parsed` metadata contains the expected processed information. A random utterance is selected using a try-except block to ensure that only utterances with the `words` metadata (top-level comments) are sampled.
 ```python
 fail = True
 while fail:
     try:
         utt = convo_corpus.random_utterance()
-        utt.meta['words']
+        utt.meta['parsed']
         fail = False
     except:
         fail = True

@@ -112,7 +112,7 @@ class ConvoTextParser(TextProcessor):
             comid: Comid,
             model="en_core_web_sm",
             input_field=None,
-            output_field="words",
+            output_field="parsed",
             tags = ["NOUN", "VERB", "ADJ", "PROPN"],
             min_size=3,
             include_oc=True,
@@ -125,7 +125,7 @@ class ConvoTextParser(TextProcessor):
             comid (Comid): The Comid dataset for text processing.
             model (str): Language model for text processing (default: "en_core_web_sm").
             input_field (str): Input field for processing (default: None).
-            output_field (str): Output field to store processed data (default: "words").
+            output_field (str): Output field to store processed data (default: "parsed").
             tags (list): POS tags to retain (default: ["NOUN", "VERB", "ADJ", "PROPN"]).
             min_size (int): Minimum token size for inclusion (default: 3).
             include_oc (bool): Include Original Content in processing (default: True).
