@@ -233,7 +233,7 @@ Clean the data by removing posts that match specific criteria.
 ---
 
 ### generate_corpus
-`generate_corpus(use_lemmas=True, include_comments=False)`
+`generate_corpus(use_lemmas=True, include_comments=False, model="en_core_web_sm")`
 Generate a corpus from the loaded data by tokenizing, cleaning, and optionally lemmatizing the text.
 
 **Parameters:**  
