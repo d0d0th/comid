@@ -5,7 +5,7 @@ with open("README.md", "r", encoding = "utf-8") as fh:
 
 setup(
     name='comid',
-    version='0.0.4',
+    version='0.0.5',
     packages=['comid'],
     url='https://github.com/d0d0th/comid',
     license='MIT License',

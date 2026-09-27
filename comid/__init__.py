@@ -1,6 +1,7 @@
 import json
 import random
 import os
+import warnings
 from datetime import datetime
 import redditcleaner as rc
 import contractions
@@ -44,6 +45,7 @@ class Comid:
         self.df_clusters = None
         self.df_topics = None
         self.df_periods = None
+        self._identity_metrics_cache = None
 
 
 
@@ -615,71 +617,91 @@ class Comid:
                     )
         self.df_periods = pd.DataFrame(data)
         return
+    
+    def _legacy_identity_metrics(self):
+        """Lazily build and cache the IdentityMetrics instance backing the deprecated metric methods below."""
+        if self._identity_metrics_cache is None:
+            from comid.metrics import IdentityMetrics
+            self._identity_metrics_cache = IdentityMetrics.from_topics(self, log_base=10)
+        return self._identity_metrics_cache
 
     def distinctiveness(self, topic, period):
-        z = self.periods_idx[period]
-        y = self.topics_idx[topic]
-        count = 0
-        sum_specificity = 0
-        for x in np.where(self.periods_array[:, y, z] > 0)[0]:
-            sum_specificity += self.specificty_by_index(x, y, z)
-            count += 1
-        if count == 0:
-            raise Exception("It isn't possible find the distinctiveness for topic " + topic + " at " + period)
-        return sum_specificity / count
+        """
+        Deprecated: use :meth:`comid.metrics.IdentityMetrics.distinctiveness` instead.
+        Kept only as a thin wrapper that delegates to it.
+        """
+        warnings.warn(
+            "Comid.distinctiveness is deprecated, use comid.metrics.IdentityMetrics.distinctiveness instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_identity_metrics().distinctiveness(topic, period)
 
     def dynamicity(self, topic, period):
-        z = self.periods_idx[period]
-        y = self.topics_idx[topic]
-        count = 0
-        sum_volatility = 0
-        for x in np.where(self.periods_array[:, y, z] > 0)[0]:
-            sum_volatility += self.volatility_by_index(x, y, z)
-            count += 1
-        if count == 0:
-            raise Exception("It isn't possible find the dynamicity for topic " + topic + " at " + period)
-        return sum_volatility / count
+        """
+        Deprecated: use :meth:`comid.metrics.IdentityMetrics.dynamicity` instead.
+        Kept only as a thin wrapper that delegates to it.
+        """
+        warnings.warn(
+            "Comid.dynamicity is deprecated, use comid.metrics.IdentityMetrics.dynamicity instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_identity_metrics().dynamicity(topic, period)
 
     def specificity(self, word, topic, period):
-        z = self.periods_idx[period]
-        y = self.topics_idx[topic]
-        x = self.words_idx[word]
-
-        return self.specificty_by_index(x, y, z)
+        """
+        Deprecated: use :meth:`comid.metrics.IdentityMetrics.specificity` instead.
+        Kept only as a thin wrapper that delegates to it.
+        """
+        warnings.warn(
+            "Comid.specificity is deprecated, use comid.metrics.IdentityMetrics.specificity instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_identity_metrics().specificity(word, topic, period)
 
     def specificty_by_index(self, x, y, z):
-        a1 = self.periods_array[x, y, z]
-        b1 = self.periods_array[:, y, z].sum()
-        a2 = self.periods_array[x, :, z].sum()
-        b2 = self.periods_array[:, :, z].sum()
-        if 0 in (a1, b1, b2, b2):
-            raise Exception(
-                "It isn't possible find the specificity for (x, y, z) : (" + str(x) + ", " + str(y) + ", " + str(
-                    z) + ")")
-        p_topic = a1 / b1
-        p_all_topics = a2 / b2
-        return math.log10(p_topic / p_all_topics)
+        """
+        Deprecated: auxiliary to the deprecated `specificity`; use
+        :meth:`comid.metrics.IdentityMetrics.specificity` instead.
+        """
+        warnings.warn(
+            "Comid.specificty_by_index is deprecated, use comid.metrics.IdentityMetrics.specificity instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        word = next(w for w, i in self.words_idx.items() if i == x)
+        topic = next(t for t, i in self.topics_idx.items() if i == y)
+        period = next(p for p, i in self.periods_idx.items() if i == z)
+        return self._legacy_identity_metrics().specificity(word, topic, period)
 
     def volatility(self, word, topic, period):
-        z = self.periods_idx[period]
-        y = self.topics_idx[topic]
-        x = self.words_idx[word]
-
-        return self.volatility_by_index(x, y, z)
+        """
+        Deprecated: use :meth:`comid.metrics.IdentityMetrics.volatility` instead.
+        Kept only as a thin wrapper that delegates to it.
+        """
+        warnings.warn(
+            "Comid.volatility is deprecated, use comid.metrics.IdentityMetrics.volatility instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_identity_metrics().volatility(word, topic, period)
 
     def volatility_by_index(self, x, y, z):
-        a1 = self.periods_array[x, y, z]
-        b1 = self.periods_array[:, y, z].sum()
-        a2 = self.periods_array[x, y, :].sum()
-        b2 = self.periods_array[:, y, :].sum()
-        if 0 in (a1, b1, b2, b2):
-            raise Exception(
-                "It isn't possible find the volatility for (x, y, z) : (" + str(x) + ", " + str(y) + ", " + str(
-                    z) + ")")
-        p_topic = a1 / b1
-        p_topic_all_periods = a2 / b2
-
-        return math.log10(p_topic / p_topic_all_periods)
+        """
+        Deprecated: auxiliary to the deprecated `volatility`; use
+        :meth:`comid.metrics.IdentityMetrics.volatility` instead.
+        """
+        warnings.warn(
+            "Comid.volatility_by_index is deprecated, use comid.metrics.IdentityMetrics.volatility instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        word = next(w for w, i in self.words_idx.items() if i == x)
+        topic = next(t for t, i in self.topics_idx.items() if i == y)
+        period = next(p for p, i in self.periods_idx.items() if i == z)
+        return self._legacy_identity_metrics().volatility(word, topic, period)
 
     def core_peripheral_orientation(self,period):
         total_core = 0
