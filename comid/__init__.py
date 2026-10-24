@@ -960,7 +960,13 @@ class Comid:
 
         #1.1 expand contractions if language is english
         if self.nlp.lang == "en":
-            raw = contractions.fix(raw).lower()
+            try:
+                raw = contractions.fix(raw).lower()
+            except IndexError:
+                # textsearch (contractions' backend) can raise IndexError on certain
+                # malformed/edge-case strings; fall back to the uncontracted text rather
+                # than aborting the whole batch over a single bad post.
+                raw = raw.lower()
         doc = self.nlp(raw)
 
         tokens_by_pos = defaultdict(list)
