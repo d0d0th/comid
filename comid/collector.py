@@ -284,7 +284,7 @@ class RedditCollector:
             file_name (str): The name of the CSV file to write the IDs to.
             ids (list[str]): The list of IDs to be written to the file.
         """
-        with open(file_name, "w") as outfile:
+        with open(file_name, "w", newline="") as outfile:
             ids_2d = [[id] for id in ids]
             csv_writer = csv.writer(outfile)
             csv_writer.writerows(ids_2d)
