@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import random
 from collections import Counter, defaultdict
 from typing import (
     Any,
@@ -18,7 +19,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from . import Comid
+from . import Comid, __version__
 
 __all__ = ["IdentityMetrics"]
 
@@ -44,9 +45,11 @@ class IdentityMetrics:
         lexical: Iterable[LexicalRecord],
         activity: Optional[Iterable[ActivityRecord]] = None,
         *,
-        min_percentile: float = 95,
+        min_percentile: Optional[float] = 95,
         log_base: float = 2,
         speaker_dedup: bool = True,
+        sample_per_period: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> None:
         """Build the count tables from simple lexical/activity records.
 
@@ -56,32 +59,48 @@ class IdentityMetrics:
             activity: iterable of ``(group, period, author)`` used to compute
                 retention. If ``None``, activity is derived from ``lexical``
                 (every author of a lexical record is considered active in
-                that group/period).
+                that group/period). Activity is never subsampled, even when
+                ``sample_per_period`` is set.
             min_percentile: percentile (0-100) used to filter, per (group,
                 period), the vocabulary down to its most frequent words. Only
                 words whose count is greater than or equal to this percentile
-                of the (group, period) count distribution are kept.
+                of the (group, period) count distribution are kept. ``None``
+                disables the filter entirely (every word is kept).
             log_base: base of the logarithm used by specificity/volatility.
             speaker_dedup: if ``True`` (default), a word is counted at most
                 once per speaker within a given (group, period), matching the
                 methodology used in the case study. If ``False``, a word is
                 counted once per lexical record (duplicate words within the
                 same record are still collapsed to one occurrence).
+            sample_per_period: if set, keep at most this many lexical records
+                per (group, period), chosen uniformly without replacement
+                (reservoir sampling) via ``random.Random(seed)``. A (group,
+                period) with fewer records than ``sample_per_period`` is kept
+                whole. ``None`` (the default) disables subsampling.
+            seed: seed for the ``random.Random`` instance used by
+                ``sample_per_period``; ignored otherwise.
 
         The whole table is built with a single pass over ``lexical`` (and, if
         given, a single pass over ``activity``); every public metric is then a
         dictionary lookup or an aggregation over the already-filtered tables.
+        When ``sample_per_period`` is set, a second, much smaller pass over the
+        per-(group, period) reservoirs turns the sampled records into counts.
         """
         self.min_percentile = min_percentile
         self.log_base = log_base
         self.speaker_dedup = speaker_dedup
+        self.sample_per_period = sample_per_period
+        self.seed = seed
+        self._source_params: Dict[str, Any] = {}
 
         raw_counts: DefaultDict[str, DefaultDict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
         n_lexical: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
         speakers_lexical: DefaultDict[str, DefaultDict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
+        all_speakers_seen: DefaultDict[str, DefaultDict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         seen_words: DefaultDict[Tuple[str, str, str], Set[str]] = defaultdict(set)
+        period_sampled: DefaultDict[str, DefaultDict[str, bool]] = defaultdict(lambda: defaultdict(bool))
 
-        for group, period, author, words in tqdm(lexical, desc="Counting words"):
+        def consume(group: str, period: str, author: str, words: Iterable[str]) -> None:
             n_lexical[group][period] += 1
             speakers_lexical[group][period].add(author)
             word_set = set(words)
@@ -96,10 +115,34 @@ class IdentityMetrics:
                 for word in word_set:
                     raw_counts[group][period][word] += 1
 
+        if sample_per_period is None:
+            for group, period, author, words in tqdm(lexical, desc="Counting words"):
+                all_speakers_seen[group][period].add(author)
+                consume(group, period, author, words)
+        else:
+            rng = random.Random(seed)
+            reservoir: DefaultDict[Tuple[str, str], List[LexicalRecord]] = defaultdict(list)
+            seen_count: DefaultDict[Tuple[str, str], int] = defaultdict(int)
+            for group, period, author, words in tqdm(lexical, desc="Counting words"):
+                all_speakers_seen[group][period].add(author)
+                key = (group, period)
+                seen_count[key] += 1
+                if len(reservoir[key]) < sample_per_period:
+                    reservoir[key].append((group, period, author, list(words)))
+                else:
+                    slot = rng.randint(0, seen_count[key] - 1)
+                    if slot < sample_per_period:
+                        reservoir[key][slot] = (group, period, author, list(words))
+            for (group, period), records in reservoir.items():
+                period_sampled[group][period] = seen_count[(group, period)] > sample_per_period
+                for rec_group, rec_period, author, words in records:
+                    consume(rec_group, rec_period, author, words)
+
         self._n_lexical: Dict[str, Dict[str, int]] = {g: dict(p) for g, p in n_lexical.items()}
         self._speakers_lexical: Dict[str, Dict[str, Set[str]]] = {
             g: {p: set(s) for p, s in periods.items()} for g, periods in speakers_lexical.items()
         }
+        self._period_sampled: Dict[str, Dict[str, bool]] = {g: dict(p) for g, p in period_sampled.items()}
 
         # Filter each (group, period) vocabulary down to its top `min_percentile`.
         self._counts: Dict[str, Dict[str, Dict[str, int]]] = {}
@@ -107,11 +150,11 @@ class IdentityMetrics:
             self._counts[group] = {}
             for period, counter in periods_map.items():
                 values = list(counter.values())
-                if values:
+                if min_percentile is None or not values:
+                    filtered = dict(counter)
+                else:
                     threshold = float(np.percentile(values, min_percentile))
                     filtered = {word: count for word, count in counter.items() if count >= threshold}
-                else:
-                    filtered = {}
                 self._counts[group][period] = filtered
 
         # Aggregate the (already filtered) tables; these are small compared to the raw utterances.
@@ -137,10 +180,11 @@ class IdentityMetrics:
             group: sum(word_map.values()) for group, word_map in self._group_word_totals.items()
         }
 
-        # Active users per (group, period), used only for retention.
+        # Active users per (group, period), used only for retention. Derived from every speaker
+        # seen in `lexical` (never subsampled), not from the possibly-truncated `speakers_lexical`.
         active: DefaultDict[str, DefaultDict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         if activity is None:
-            for group, periods_map in self._speakers_lexical.items():
+            for group, periods_map in all_speakers_seen.items():
                 for period, speakers_set in periods_map.items():
                     active[group][period] = set(speakers_set)
         else:
@@ -165,12 +209,14 @@ class IdentityMetrics:
         words_field: str = "parsed",
         lexical_depths: Sequence[int] = (0,),
         activity_depths: Optional[Sequence[int]] = None,
+        period_range: Optional[Tuple[str, str]] = None,
         **kw: Any,
     ) -> "IdentityMetrics":
         """Build an :class:`IdentityMetrics` from a ConvoKit ``Corpus``.
 
         Lexical records are the utterances whose ``meta["depth"]`` is in
-        ``lexical_depths`` and that have a truthy ``meta[words_field]``.
+        ``lexical_depths`` and that have a truthy ``meta[words_field]``; an
+        utterance with an empty token list does not count as a lexical record.
         Activity records are all utterances (``activity_depths=None``) or
         only those whose ``meta["depth"]`` is in ``activity_depths``. The
         period comes from ``Comid.period_key(utt.timestamp, period_type)``
@@ -184,14 +230,23 @@ class IdentityMetrics:
             lexical_depths: utterance depths considered for word counts.
             activity_depths: utterance depths considered for activity/retention;
                 ``None`` means every utterance counts as activity.
+            period_range: optional ``(start, end)`` inclusive bounds on the
+                period key, compared as plain strings -- valid for every
+                period type because the keys are zero-padded. Utterances whose
+                period falls outside the window are excluded from both the
+                lexical and the activity records.
             **kw: extra keyword arguments forwarded to the constructor
-                (``min_percentile``, ``log_base``, ``speaker_dedup``).
+                (``min_percentile``, ``log_base``, ``speaker_dedup``,
+                ``sample_per_period``, ``seed``).
 
         Returns:
             IdentityMetrics: the metrics built from the corpus.
         """
         lexical_depths_set = set(lexical_depths)
         activity_depths_set = set(activity_depths) if activity_depths is not None else None
+
+        def in_range(period: str) -> bool:
+            return period_range is None or period_range[0] <= period <= period_range[1]
 
         def lexical_records() -> Iterable[LexicalRecord]:
             for utt in corpus.iter_utterances():
@@ -200,19 +255,32 @@ class IdentityMetrics:
                 words = utt.meta.get(words_field)
                 if not words:
                     continue
-                group = utt.meta.get(group_key)
                 period = Comid.period_key(utt.timestamp, period_type)
+                if not in_range(period):
+                    continue
+                group = utt.meta.get(group_key)
                 yield group, period, utt.speaker.id, words
 
         def activity_records() -> Iterable[ActivityRecord]:
             for utt in corpus.iter_utterances():
                 if activity_depths_set is not None and utt.meta.get("depth") not in activity_depths_set:
                     continue
-                group = utt.meta.get(group_key)
                 period = Comid.period_key(utt.timestamp, period_type)
+                if not in_range(period):
+                    continue
+                group = utt.meta.get(group_key)
                 yield group, period, utt.speaker.id
 
-        return cls(lexical_records(), activity_records(), **kw)
+        instance = cls(lexical_records(), activity_records(), **kw)
+        instance._source_params = {
+            "group_key": group_key,
+            "period_type": period_type,
+            "words_field": words_field,
+            "lexical_depths": list(lexical_depths),
+            "activity_depths": list(activity_depths) if activity_depths is not None else None,
+            "period_range": list(period_range) if period_range is not None else None,
+        }
+        return instance
 
     @classmethod
     def from_topics(
@@ -222,12 +290,14 @@ class IdentityMetrics:
         period_type: str = "m",
         lexical_depths: Optional[Sequence[int]] = None,
         activity_depths: Optional[Sequence[int]] = None,
+        period_range: Optional[Tuple[str, str]] = None,
         **kw: Any,
     ) -> "IdentityMetrics":
         """Build an :class:`IdentityMetrics` from ``Comid.df_topics``.
 
         Group is the topic, author is ``author_id`` and words are the tokenized text of the
-        document, looked up in ``comid.corpus`` by document id. The period comes from
+        document, looked up in ``comid.corpus`` by document id; a document with an empty token
+        list does not count as a lexical record. The period comes from
         ``Comid.period_key(created_utc, period_type)``. Rows without a topic are skipped.
         ``lexical_depths``/``activity_depths`` optionally restrict rows by the ``depth`` column;
         ``None`` (the default for both) means every row, matching ``Comid``'s own
@@ -238,8 +308,13 @@ class IdentityMetrics:
             period_type: period granularity, forwarded to ``Comid.period_key``.
             lexical_depths: ``depth`` values considered for word counts, or ``None`` for all.
             activity_depths: ``depth`` values considered for activity/retention, or ``None`` for all.
+            period_range: optional ``(start, end)`` inclusive bounds on the period key, compared
+                as plain strings -- valid for every period type because the keys are zero-padded.
+                Rows whose period falls outside the window are excluded from both the lexical and
+                the activity records.
             **kw: extra keyword arguments forwarded to the constructor
-                (``min_percentile``, ``log_base``, ``speaker_dedup``).
+                (``min_percentile``, ``log_base``, ``speaker_dedup``, ``sample_per_period``,
+                ``seed``).
 
         Raises:
             ValueError: if ``comid.df_topics`` or ``comid.corpus`` has not been built yet.
@@ -256,6 +331,9 @@ class IdentityMetrics:
         lexical_depths_set = set(lexical_depths) if lexical_depths is not None else None
         activity_depths_set = set(activity_depths) if activity_depths is not None else None
 
+        def in_range(period: str) -> bool:
+            return period_range is None or period_range[0] <= period <= period_range[1]
+
         def lexical_records() -> Iterable[LexicalRecord]:
             for doc_id, row in comid.df_topics.iterrows():
                 if pd.isnull(row["topic"]):
@@ -266,6 +344,8 @@ class IdentityMetrics:
                 if not words:
                     continue
                 period = Comid.period_key(row["created_utc"], period_type)
+                if not in_range(period):
+                    continue
                 yield row["topic"], period, row["author_id"], words
 
         def activity_records() -> Iterable[ActivityRecord]:
@@ -275,9 +355,20 @@ class IdentityMetrics:
                 if activity_depths_set is not None and row["depth"] not in activity_depths_set:
                     continue
                 period = Comid.period_key(row["created_utc"], period_type)
+                if not in_range(period):
+                    continue
                 yield row["topic"], period, row["author_id"]
 
-        return cls(lexical_records(), activity_records(), **kw)
+        instance = cls(lexical_records(), activity_records(), **kw)
+        instance._source_params = {
+            "group_key": "topic",
+            "period_type": period_type,
+            "words_field": None,
+            "lexical_depths": list(lexical_depths) if lexical_depths is not None else None,
+            "activity_depths": list(activity_depths) if activity_depths is not None else None,
+            "period_range": list(period_range) if period_range is not None else None,
+        }
+        return instance
 
     def _next_period(self, period: str) -> Optional[str]:
         """Return the period immediately after `period` in the global period order, or None."""
@@ -448,7 +539,9 @@ class IdentityMetrics:
             pandas.DataFrame: columns ``group``, ``period``, ``n_lexical``,
             ``n_speakers_lexical``, ``n_active``, ``vocab_size``,
             ``distinctiveness``, ``dynamicity``, ``retention_next`` (NaN at
-            the last period of each group).
+            the last period of each group), ``sampled`` (``True`` if the
+            lexical records of that (group, period) were truncated by
+            ``sample_per_period``).
         """
         rows = []
         for group in self._groups:
@@ -473,6 +566,7 @@ class IdentityMetrics:
                         "distinctiveness": self.distinctiveness(group, period),
                         "dynamicity": self.dynamicity(group, period),
                         "retention_next": retention_next if retention_next is not None else float("nan"),
+                        "sampled": self._period_sampled.get(group, {}).get(period, False),
                     }
                 )
         columns = [
@@ -485,6 +579,7 @@ class IdentityMetrics:
             "distinctiveness",
             "dynamicity",
             "retention_next",
+            "sampled",
         ]
         return pd.DataFrame(rows, columns=columns).sort_values(["group", "period"]).reset_index(drop=True)
 
@@ -547,17 +642,30 @@ class IdentityMetrics:
     def save(self, folder: str) -> None:
         """Write ``summary.csv``, ``series.csv`` and ``params.json`` to `folder`.
 
-        `params.json` records the constructor parameters (``min_percentile``,
-        ``log_base``, ``speaker_dedup``) so that the results folder describes
-        itself.
+        `params.json` records every parameter of the run -- the adapter parameters recorded by
+        ``from_corpus``/``from_topics`` (``group_key``, ``period_type``, ``words_field``,
+        ``lexical_depths``, ``activity_depths``, ``period_range``; ``None`` if the instance was
+        built directly from records), the constructor parameters (``sample_per_period``, ``seed``,
+        ``min_percentile``, ``log_base``, ``speaker_dedup``) and the installed ``comid`` version --
+        so that the results folder describes itself.
         """
         os.makedirs(folder, exist_ok=True)
         self.summary().to_csv(os.path.join(folder, "summary.csv"), index=False)
         self.series().to_csv(os.path.join(folder, "series.csv"), index=False)
+        source = self._source_params
         params = {
+            "group_key": source.get("group_key"),
+            "period_type": source.get("period_type"),
+            "words_field": source.get("words_field"),
+            "lexical_depths": source.get("lexical_depths"),
+            "activity_depths": source.get("activity_depths"),
+            "period_range": source.get("period_range"),
+            "sample_per_period": self.sample_per_period,
+            "seed": self.seed,
             "min_percentile": self.min_percentile,
             "log_base": self.log_base,
             "speaker_dedup": self.speaker_dedup,
+            "comid_version": __version__,
         }
         with open(os.path.join(folder, "params.json"), "w", encoding="utf-8") as f:
             json.dump(params, f, indent=2, sort_keys=True)
