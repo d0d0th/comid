@@ -3,6 +3,10 @@
 ## Overview
 This module bridges the Reddit dataset from **Comid** with Convokit’s conversational data structures for advanced linguistic analysis and conversational modeling. It allows users to convert Reddit posts into a structured corpus, tokenize utterances, and process them based on specified linguistic features.
 
+> **Depth convention:** `meta['depth']` is `None` for the original post (OC) and Reddit's raw depth
+> (`0` for a top-level comment) for every reply. `depth == 0` never means OC. See
+> [Conventions.md](Conventions.md) for the full rule (also applied, differently, in `df_topics`).
+
 ## Classes
 
 ### `ConvoCorpus`
