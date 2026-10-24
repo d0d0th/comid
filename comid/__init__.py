@@ -17,7 +17,7 @@ from itertools import chain
 import math
 from collections import Counter, defaultdict
 
-__version__ = "0.0.5"
+__version__ = "0.1.0.dev0"
 
 
 class Comid:
@@ -120,29 +120,42 @@ class Comid:
             boundary_keywords (bool): If True, only remove posts with exact keyword matches; otherwise, allow partial matches.
 
         Returns:
-            None
+            dict: counts describing what was flagged/removed and why. Keys: ``loaded`` (posts before
+            cleaning), ``no_content_flagged``/``no_author_flagged`` (posts directly matching each
+            criterion, before thread expansion), ``no_content_removed``/``no_author_removed``/
+            ``keyword_removed`` (posts removed once each criterion's matched threads are expanded),
+            ``removed_total`` (union of all removed posts), ``retained`` (posts left after cleaning)
+            and ``by_subreddit``, a dict mapping each subreddit to the same breakdown.
         """
         keys_to_remove = set()
         before_clean = len(self.posts)
+
+        no_content_flagged_ids = set()
+        no_content_removed_ids = set()
+        no_author_flagged_ids = set()
+        no_author_removed_ids = set()
+        keyword_removed_ids = set()
 
         if remove_no_content:
             no_content_dict = {k: v for k, v in tqdm(self.posts.items(), desc="Searching posts without content")
                                if 'parent_id' not in v and v['selftext'] in ["[removed]", "[deleted]"]
                                or 'parent_id' in v and v['full_text'] in ["[removed]", "[deleted]"]
                                }
+            no_content_flagged_ids = set(no_content_dict.keys())
 
-            for key in tqdm(set(no_content_dict.keys()), desc="Getting the threads of posts without content"):
-                aux_list = self._retrieve_thread_ids(key)
-                keys_to_remove |= set(aux_list)
+            for key in tqdm(no_content_flagged_ids, desc="Getting the threads of posts without content"):
+                no_content_removed_ids |= set(self._retrieve_thread_ids(key))
+            keys_to_remove |= no_content_removed_ids
 
         if remove_no_author:
             no_author_dict = {k: v for k, v in tqdm(self.posts.items(), desc="Searching posts without author")
                               if v['author_id'] is None
                               }
+            no_author_flagged_ids = set(no_author_dict.keys())
 
-            for key in tqdm(set(no_author_dict.keys()), desc="Getting the threads of posts without author"):
-                aux_list = self._retrieve_thread_ids(key)
-                keys_to_remove |= set(aux_list)
+            for key in tqdm(no_author_flagged_ids, desc="Getting the threads of posts without author"):
+                no_author_removed_ids |= set(self._retrieve_thread_ids(key))
+            keys_to_remove |= no_author_removed_ids
 
         if keywords:
             regex = r'\b(?:{})\b' if boundary_keywords else r'{}'
@@ -153,8 +166,27 @@ class Comid:
 
             for key in tqdm(set(keywords_dicty.keys()),
                             desc="Getting the threads of posts with the keywords to remove"):
-                aux_list = self._retrieve_thread_ids(key)
-                keys_to_remove |= set(aux_list)
+                keyword_removed_ids |= set(self._retrieve_thread_ids(key))
+            keys_to_remove |= keyword_removed_ids
+
+        # per-subreddit breakdown, computed before self.posts is overwritten below
+        by_subreddit = defaultdict(lambda: {
+            "loaded": 0, "no_content_flagged": 0, "no_content_removed": 0,
+            "no_author_flagged": 0, "no_author_removed": 0, "keyword_removed": 0,
+            "removed_total": 0, "retained": 0,
+        })
+        for post_id, post in self.posts.items():
+            stats = by_subreddit[post.get('subreddit')]
+            stats["loaded"] += 1
+            stats["no_content_flagged"] += post_id in no_content_flagged_ids
+            stats["no_content_removed"] += post_id in no_content_removed_ids
+            stats["no_author_flagged"] += post_id in no_author_flagged_ids
+            stats["no_author_removed"] += post_id in no_author_removed_ids
+            stats["keyword_removed"] += post_id in keyword_removed_ids
+            if post_id in keys_to_remove:
+                stats["removed_total"] += 1
+            else:
+                stats["retained"] += 1
 
         if len(keys_to_remove) > 0:
             self.posts = {k: v for k, v in tqdm(self.posts.items(), desc="Filtering posts")
@@ -163,6 +195,18 @@ class Comid:
             print("Number of removed posts:", before_clean - len(self.posts))
         else:
             print("Nothing to clean")
+
+        return {
+            "loaded": before_clean,
+            "no_content_flagged": len(no_content_flagged_ids),
+            "no_content_removed": len(no_content_removed_ids),
+            "no_author_flagged": len(no_author_flagged_ids),
+            "no_author_removed": len(no_author_removed_ids),
+            "keyword_removed": len(keyword_removed_ids),
+            "removed_total": len(keys_to_remove),
+            "retained": len(self.posts),
+            "by_subreddit": dict(by_subreddit),
+        }
 
     def generate_corpus(self, use_lemmas=True, include_comments=False,model="en_core_web_sm"):
         """
@@ -410,6 +454,10 @@ class Comid:
         """
         Create a topics conversation DataFrame.
 
+        Builds `self.df_topics` with a `depth`/`is_oc` pair per row: the original post (OC) gets
+        `depth=-1, is_oc=True`; every comment/reply keeps Reddit's raw depth (`0` for top-level) and
+        `is_oc=False`. See docs/Conventions.md -- `depth == 0` never means OC.
+
         Parameters:
             topics_file (str, optional): Path to a CSV file containing topic annotations. If provided, only annotated topics are considered.
             min_percent (int): Minimum percentage of documents in a cluster to consider it a topic. Ignored if topics_file is provided.
@@ -445,8 +493,8 @@ class Comid:
                 post = self.posts[doc]
                 created_at = datetime.fromtimestamp(post['created']).strftime('%Y-%m-%d %H:%M:%S')
                 data.append(
-                    [doc, topics[cluster], post['author_id'], 0, '', created_at, post['created'], post['full_text'],
-                     doc])
+                    [doc, topics[cluster], post['author_id'], -1, '', created_at, post['created'], post['full_text'],
+                     doc, True])
                 if 'replies' in post:
                     for reply in post['replies']:
                         self._proc_replies(reply, data, doc, topics[cluster])
@@ -454,7 +502,7 @@ class Comid:
                     for reply in post['comments']:
                         self._proc_replies(reply, data, doc, topics[cluster])
         self.df_topics = pd.DataFrame(data, columns=['id', 'topic', 'author_id', 'depth', 'parent_id', 'created_at',
-                                                     'created_utc', 'fulltext', 'oc'])
+                                                     'created_utc', 'fulltext', 'oc', 'is_oc'])
         self.df_topics = self.df_topics.set_index('id')
         self._identity_metrics_cache = None
 
@@ -565,8 +613,8 @@ class Comid:
             for topic in df_period[~df_period['topic'].isnull()]['topic'].unique().tolist():
 
                 df_topic_period = df_period[df_period['topic'] == topic]
-                new_threads = df_topic_period[df_topic_period['depth'] == 0].shape[0]
-                replies = df_topic_period[df_topic_period['depth'] > 0].shape[0]
+                new_threads = df_topic_period[df_topic_period['is_oc']].shape[0]
+                replies = df_topic_period[~df_topic_period['is_oc']].shape[0]
 
                 words_topic = df_topic_period.tokenized.explode().dropna().tolist()
                 y = self.topics_idx[topic]
@@ -783,9 +831,9 @@ class Comid:
                     self._proc_replies(reply, data, oc, topic)
             created_at = datetime.fromtimestamp(post['created']).strftime('%Y-%m-%d %H:%M:%S')
             data.append([post['id'], topic, post['author_id'], post['depth'], post['parent_id'], created_at,
-                         post['created'], post['full_text'], oc])
+                         post['created'], post['full_text'], oc, False])
 
-        # doc_id author_id cluster depth parent_id created fulltext oc_id
+        # doc_id author_id cluster depth parent_id created fulltext oc_id is_oc
 
     @staticmethod
     def _lemmatize(tokenized_list, nlp):

@@ -157,7 +157,8 @@ The `df_topics` attribute is a **Pandas DataFrame** that organizes submissions b
 | `id`           | The submission ID.                                                                                  |
 | `topic`        | The topic label or cluster name if the topic is not annotated.                                       |
 | `author_id`    | The author ID of the submission.                                                                    |
-| `depth`        | The depth of the submission in a thread conversation (`0` for original content).                     |
+| `depth`        | Reddit's raw comment depth (`0` for a top-level comment). The original post (OC) is never `0` -- see `is_oc`. |
+| `is_oc`        | `True` if the row is the original post (OC), `False` for comments/replies. See `docs/Conventions.md`. |
 | `parent_id`    | The ID of the parent submission (if the submission is a comment or reply).                           |
 | `created_at`   | The submission creation date and time in the format `YYYY-MM-DD HH:MM:SS`.                          |
 | `created_utc`  | The submission creation date and time as a Unix timestamp.                                           |
@@ -170,10 +171,10 @@ The `df_topics` attribute is a **Pandas DataFrame** that organizes submissions b
 # Example of df_topics
 In [1]: cm.df_topics.head()
 Out[1]:
-         topic author_id  depth parent_id           created_at   created_utc    fulltext                   oc     period
+         topic author_id  depth  is_oc parent_id           created_at   created_utc    fulltext                   oc     period
 id                                                                                                                     
-rtml7w  Health  3ezoo9dh      0            2022-01-01 16:22:56  1.641054e+09  Finding Community... rtml7w  2022-01
-hqubam  Health     jr5p1      2   hqtq4wj  2022-01-01 19:50:53  1.641067e+09  I’m at this hostel... rtml7w  2022-01
+rtml7w  Health  3ezoo9dh     -1   True            2022-01-01 16:22:56  1.641054e+09  Finding Community... rtml7w  2022-01
+hqubam  Health     jr5p1      0  False   rtml7w  2022-01-01 19:50:53  1.641067e+09  I'm at this hostel... rtml7w  2022-01
 ```
 
 ---
@@ -460,10 +461,10 @@ cm.build_topics(topics_file="path/to/topics.csv")
 
 **Sample Output (DataFrame):**  
 
-| id    | topic    | author_id | depth | parent_id | created_at        | created_utc | fulltext          | oc   |  
-|-------|----------|-----------|-------|-----------|------------------|-------------|------------------|------|  
-| 12345 | tech     | user123   | 0     |           | 2025-02-01 14:00 | 1675298400  | Some text here.  | 12345|  
-| 67890 | health   | user456   | 1     | 12345     | 2025-02-01 14:05 | 1675298700  | Reply content.   | 12345|  
+| id    | topic    | author_id | depth | is_oc | parent_id | created_at        | created_utc | fulltext          | oc   |  
+|-------|----------|-----------|-------|-------|-----------|------------------|-------------|------------------|------|  
+| 12345 | tech     | user123   | -1    | True  |           | 2025-02-01 14:00 | 1675298400  | Some text here.  | 12345|  
+| 67890 | health   | user456   | 0     | False | 12345     | 2025-02-01 14:05 | 1675298700  | Reply content.   | 12345|  
 
 ---
 
