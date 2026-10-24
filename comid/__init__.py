@@ -2,7 +2,7 @@ import json
 import random
 import os
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 import redditcleaner as rc
 import contractions
 import re
@@ -16,6 +16,8 @@ import numpy as np
 from itertools import chain
 import math
 from collections import Counter, defaultdict
+
+__version__ = "0.0.5"
 
 
 class Comid:
@@ -204,6 +206,7 @@ class Comid:
 
         self.corpus = dict(
             map(lambda e: (e[0], self._filter_small_words(e[1])), tqdm(oc, desc="Filtering small words")))
+        self._identity_metrics_cache = None
 
     def reduce_corpus(self, target_size=6000, optimize_num_interactions=True, min_op_length=0,
                       min_num_interactions=0):
@@ -453,6 +456,7 @@ class Comid:
         self.df_topics = pd.DataFrame(data, columns=['id', 'topic', 'author_id', 'depth', 'parent_id', 'created_at',
                                                      'created_utc', 'fulltext', 'oc'])
         self.df_topics = self.df_topics.set_index('id')
+        self._identity_metrics_cache = None
 
         return
 
@@ -470,7 +474,7 @@ class Comid:
         Returns:
             str: The formatted period label.
         """
-        dt = datetime.fromtimestamp(timestamp)
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         per = period_type.lower()
         if per == "d":
             key = dt.strftime('%Y-%m-%d')
@@ -629,6 +633,12 @@ class Comid:
         """
         Deprecated: use :meth:`comid.metrics.IdentityMetrics.distinctiveness` instead.
         Kept only as a thin wrapper that delegates to it.
+
+        The semantics changed from the old array-based implementation: words are deduplicated per
+        author within each (topic, period) instead of counted as raw token frequency, the vocabulary
+        is cut to the 95th percentile of word counts (``min_percentile=95``), and only the original
+        posts' corpus is used (``comid.corpus`` is keyed by OC id, so comments/replies without their
+        own corpus entry are skipped).
         """
         warnings.warn(
             "Comid.distinctiveness is deprecated, use comid.metrics.IdentityMetrics.distinctiveness instead.",
@@ -641,6 +651,12 @@ class Comid:
         """
         Deprecated: use :meth:`comid.metrics.IdentityMetrics.dynamicity` instead.
         Kept only as a thin wrapper that delegates to it.
+
+        The semantics changed from the old array-based implementation: words are deduplicated per
+        author within each (topic, period) instead of counted as raw token frequency, the vocabulary
+        is cut to the 95th percentile of word counts (``min_percentile=95``), and only the original
+        posts' corpus is used (``comid.corpus`` is keyed by OC id, so comments/replies without their
+        own corpus entry are skipped).
         """
         warnings.warn(
             "Comid.dynamicity is deprecated, use comid.metrics.IdentityMetrics.dynamicity instead.",
@@ -653,6 +669,12 @@ class Comid:
         """
         Deprecated: use :meth:`comid.metrics.IdentityMetrics.specificity` instead.
         Kept only as a thin wrapper that delegates to it.
+
+        The semantics changed from the old array-based implementation: words are deduplicated per
+        author within each (topic, period) instead of counted as raw token frequency, the vocabulary
+        is cut to the 95th percentile of word counts (``min_percentile=95``), and only the original
+        posts' corpus is used (``comid.corpus`` is keyed by OC id, so comments/replies without their
+        own corpus entry are skipped).
         """
         warnings.warn(
             "Comid.specificity is deprecated, use comid.metrics.IdentityMetrics.specificity instead.",
@@ -664,7 +686,8 @@ class Comid:
     def specificty_by_index(self, x, y, z):
         """
         Deprecated: auxiliary to the deprecated `specificity`; use
-        :meth:`comid.metrics.IdentityMetrics.specificity` instead.
+        :meth:`comid.metrics.IdentityMetrics.specificity` instead. See `specificity`'s docstring for
+        the semantic changes (per-author dedup, percentile cutoff, OP-only corpus).
         """
         warnings.warn(
             "Comid.specificty_by_index is deprecated, use comid.metrics.IdentityMetrics.specificity instead.",
@@ -680,6 +703,12 @@ class Comid:
         """
         Deprecated: use :meth:`comid.metrics.IdentityMetrics.volatility` instead.
         Kept only as a thin wrapper that delegates to it.
+
+        The semantics changed from the old array-based implementation: words are deduplicated per
+        author within each (topic, period) instead of counted as raw token frequency, the vocabulary
+        is cut to the 95th percentile of word counts (``min_percentile=95``), and only the original
+        posts' corpus is used (``comid.corpus`` is keyed by OC id, so comments/replies without their
+        own corpus entry are skipped).
         """
         warnings.warn(
             "Comid.volatility is deprecated, use comid.metrics.IdentityMetrics.volatility instead.",
@@ -691,7 +720,8 @@ class Comid:
     def volatility_by_index(self, x, y, z):
         """
         Deprecated: auxiliary to the deprecated `volatility`; use
-        :meth:`comid.metrics.IdentityMetrics.volatility` instead.
+        :meth:`comid.metrics.IdentityMetrics.volatility` instead. See `specificity`'s docstring for
+        the semantic changes (per-author dedup, percentile cutoff, OP-only corpus).
         """
         warnings.warn(
             "Comid.volatility_by_index is deprecated, use comid.metrics.IdentityMetrics.volatility instead.",
@@ -730,7 +760,7 @@ class Comid:
         b1 = df_filtered_period['replies'].sum()
         a2 = df_filtered_topic['replies'].sum()
         b2 = self.df_periods['replies'].sum()
-        if 0 in (a1, b1, b2, b2):
+        if 0 in (a1, b1, a2, b2):
             raise Exception("It isn't possible to find the discrepancy for the topic " + topic + " in the period "+period)
 
         p_topic_period = a1 / b1
