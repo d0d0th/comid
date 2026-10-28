@@ -50,6 +50,7 @@ class IdentityMetrics:
         speaker_dedup: bool = True,
         sample_per_period: Optional[int] = None,
         seed: Optional[int] = None,
+        background: str = "filtered",
     ) -> None:
         """Build the count tables from simple lexical/activity records.
 
@@ -67,6 +68,19 @@ class IdentityMetrics:
                 of the (group, period) count distribution are kept. ``None``
                 disables the filter entirely (every word is kept).
             log_base: base of the logarithm used by specificity/volatility.
+            background: ``"filtered"`` (default) or ``"all"``. Controls which
+                counts the *background* probabilities of specificity/volatility
+                (the word's global share across groups at a period, and the
+                word's share within a group across all periods) are computed
+                from. ``"filtered"`` uses only the top-``min_percentile``
+                vocabulary of every (group, period) -- a word used broadly but
+                below the cut in most groups can then look artificially
+                exclusive to the one group where it passed the cut. ``"all"``
+                uses every word's raw count before the percentile cut, so the
+                background reflects true cross-group usage. The *foreground*
+                share (a word's share within its own (group, period) or
+                (group, all periods)) always uses the filtered vocabulary,
+                regardless of ``background``.
             speaker_dedup: if ``True`` (default), a word is counted at most
                 once per speaker within a given (group, period), matching the
                 methodology used in the case study. If ``False``, a word is
@@ -91,6 +105,9 @@ class IdentityMetrics:
         self.speaker_dedup = speaker_dedup
         self.sample_per_period = sample_per_period
         self.seed = seed
+        if background not in ("filtered", "all"):
+            raise ValueError(f"background must be 'filtered' or 'all', got {background!r}.")
+        self.background = background
         self._source_params: Dict[str, Any] = {}
 
         raw_counts: DefaultDict[str, DefaultDict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
@@ -178,6 +195,32 @@ class IdentityMetrics:
         self._group_period_sum: Dict[str, Dict[str, int]] = {g: dict(p) for g, p in group_period_sum.items()}
         self._group_totals: Dict[str, int] = {
             group: sum(word_map.values()) for group, word_map in self._group_word_totals.items()
+        }
+
+        # Same aggregates, but over the UNFILTERED vocabulary (`raw_counts`, before the percentile
+        # cut) -- used for the "all" background: a word's true cross-group/cross-period usage,
+        # unaffected by whether it happened to pass the cut in any particular (group, period).
+        word_period_totals_all: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
+        group_word_totals_all: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
+        period_totals_all: DefaultDict[str, int] = defaultdict(int)
+
+        for group, periods_map in raw_counts.items():
+            for period, counter in periods_map.items():
+                total = sum(counter.values())
+                period_totals_all[period] += total
+                for word, count in counter.items():
+                    word_period_totals_all[word][period] += count
+                    group_word_totals_all[group][word] += count
+
+        self._word_period_totals_all: Dict[str, Dict[str, int]] = {
+            w: dict(p) for w, p in word_period_totals_all.items()
+        }
+        self._group_word_totals_all: Dict[str, Dict[str, int]] = {
+            g: dict(w) for g, w in group_word_totals_all.items()
+        }
+        self._period_totals_all: Dict[str, int] = dict(period_totals_all)
+        self._group_totals_all: Dict[str, int] = {
+            group: sum(word_map.values()) for group, word_map in self._group_word_totals_all.items()
         }
 
         # Active users per (group, period), used only for retention. Derived from every speaker
@@ -399,12 +442,34 @@ class IdentityMetrics:
                 values.append(value)
         return values
 
+    def _ceiling_fraction(self, group: str, period: str) -> float:
+        """Fraction of (group, period)'s filtered vocabulary exclusive to `group` at `period`.
+
+        A word is "exclusive" here when its ``"filtered"``-background cross-group total at
+        `period` (``_word_period_totals``) equals exactly its count within `group` -- i.e. no
+        other group's filtered vocabulary contains it at this period, so its specificity sits at
+        the group-size-determined ceiling (see ``specificity``'s docstring).
+        """
+        words = self._counts.get(group, {}).get(period, {})
+        if not words:
+            return float("nan")
+        n_ceiling = sum(
+            1
+            for word, count in words.items()
+            if self._word_period_totals.get(word, {}).get(period, 0) == count
+        )
+        return n_ceiling / len(words)
+
     def specificity(self, word: str, group: str, period: str) -> Optional[float]:
         """Specificity of `word` in `group` during `period`.
 
         S(w, c, t) = log_b(a / b), where:
             a = count(w, c, t) / sum_w' count(w', c, t)   -- share of w within group c at period t
             b = count(w, ·, t) / sum_w' count(w', ·, t)   -- share of w across all groups at period t
+
+        `b` is computed over the filtered vocabulary of every group (``background="filtered"``,
+        the default) or over every word's raw count before the percentile cut
+        (``background="all"``); see the constructor's ``background`` parameter.
 
         Returns:
             float: the specificity value, or None if `word` is not part of
@@ -414,7 +479,10 @@ class IdentityMetrics:
         if not words or word not in words:
             return None
         a = words[word] / self._group_period_sum[group][period]
-        b = self._word_period_totals[word][period] / self._period_totals[period]
+        if self.background == "all":
+            b = self._word_period_totals_all[word][period] / self._period_totals_all[period]
+        else:
+            b = self._word_period_totals[word][period] / self._period_totals[period]
         return math.log(a / b, self.log_base)
 
     def volatility(self, word: str, group: str, period: str) -> Optional[float]:
@@ -424,6 +492,10 @@ class IdentityMetrics:
             a = count(w, c, t) / sum_w' count(w', c, t)     -- share of w within group c at period t
             b = count(w, c, ·) / sum_w' count(w', c, ·)     -- share of w within group c across all periods
 
+        `b` is computed over the filtered vocabulary of `group` (``background="filtered"``, the
+        default) or over every word's raw count before the percentile cut (``background="all"``);
+        see the constructor's ``background`` parameter.
+
         Returns:
             float: the volatility value, or None if `word` is not part of
             the filtered vocabulary of (`group`, `period`).
@@ -432,7 +504,10 @@ class IdentityMetrics:
         if not words or word not in words:
             return None
         a = words[word] / self._group_period_sum[group][period]
-        b = self._group_word_totals[group][word] / self._group_totals[group]
+        if self.background == "all":
+            b = self._group_word_totals_all[group][word] / self._group_totals_all[group]
+        else:
+            b = self._group_word_totals[group][word] / self._group_totals[group]
         return math.log(a / b, self.log_base)
 
     def distinctiveness(self, group: str, period: Optional[str] = None) -> float:
@@ -541,7 +616,11 @@ class IdentityMetrics:
             ``distinctiveness``, ``dynamicity``, ``retention_next`` (NaN at
             the last period of each group), ``sampled`` (``True`` if the
             lexical records of that (group, period) were truncated by
-            ``sample_per_period``).
+            ``sample_per_period``), ``ceiling_fraction`` (fraction of the
+            filtered vocabulary of (group, period) exclusive to this group at
+            this period under the ``"filtered"`` background -- i.e. words
+            whose specificity sits at the group-size-determined ceiling
+            described in ``specificity``'s docstring).
         """
         rows = []
         for group in self._groups:
@@ -567,6 +646,7 @@ class IdentityMetrics:
                         "dynamicity": self.dynamicity(group, period),
                         "retention_next": retention_next if retention_next is not None else float("nan"),
                         "sampled": self._period_sampled.get(group, {}).get(period, False),
+                        "ceiling_fraction": self._ceiling_fraction(group, period),
                     }
                 )
         columns = [
@@ -580,6 +660,7 @@ class IdentityMetrics:
             "dynamicity",
             "retention_next",
             "sampled",
+            "ceiling_fraction",
         ]
         return pd.DataFrame(rows, columns=columns).sort_values(["group", "period"]).reset_index(drop=True)
 
@@ -646,8 +727,8 @@ class IdentityMetrics:
         ``from_corpus``/``from_topics`` (``group_key``, ``period_type``, ``words_field``,
         ``lexical_depths``, ``activity_depths``, ``period_range``; ``None`` if the instance was
         built directly from records), the constructor parameters (``sample_per_period``, ``seed``,
-        ``min_percentile``, ``log_base``, ``speaker_dedup``) and the installed ``comid`` version --
-        so that the results folder describes itself.
+        ``min_percentile``, ``log_base``, ``speaker_dedup``, ``background``) and the installed
+        ``comid`` version -- so that the results folder describes itself.
         """
         os.makedirs(folder, exist_ok=True)
         self.summary().to_csv(os.path.join(folder, "summary.csv"), index=False)
@@ -665,6 +746,7 @@ class IdentityMetrics:
             "min_percentile": self.min_percentile,
             "log_base": self.log_base,
             "speaker_dedup": self.speaker_dedup,
+            "background": self.background,
             "comid_version": __version__,
         }
         with open(os.path.join(folder, "params.json"), "w", encoding="utf-8") as f:
