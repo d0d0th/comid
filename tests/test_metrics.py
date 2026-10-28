@@ -222,6 +222,78 @@ def test_min_percentile_none_disables_filter(notebook_reference):
             assert set(table) >= set(communities_periods[group][period])
 
 
+# --- background="filtered" (default) vs "all" ---
+
+# "common" is said once in each group, but "big" also has "popular" said 5 times, so with
+# min_percentile=50 "common" (count 1) gets filtered OUT of "big"'s own vocabulary while it
+# passes the cut (trivially) in "small", which only has "common". Under the "filtered"
+# background, "common"'s cross-group total only sees "small"'s contribution; under "all" it
+# also sees "big"'s, even though "big"'s own filtered vocabulary doesn't list the word.
+BACKGROUND_RECORDS = [
+    ("big", "p1", "b1", ["popular"]),
+    ("big", "p1", "b2", ["popular"]),
+    ("big", "p1", "b3", ["popular"]),
+    ("big", "p1", "b4", ["popular"]),
+    ("big", "p1", "b5", ["popular"]),
+    ("big", "p1", "b6", ["common"]),
+    ("small", "p1", "s1", ["common"]),
+]
+
+
+def test_background_all_vs_filtered_specificity():
+    filtered = IdentityMetrics(BACKGROUND_RECORDS, min_percentile=50, log_base=math.e, speaker_dedup=True)
+    all_bg = IdentityMetrics(
+        BACKGROUND_RECORDS, min_percentile=50, log_base=math.e, speaker_dedup=True, background="all"
+    )
+
+    assert "common" not in filtered.word_table("big", "p1")["word"].tolist()
+    assert "common" in filtered.word_table("small", "p1")["word"].tolist()
+
+    assert filtered.specificity("common", "small", "p1") == pytest.approx(math.log(6))
+    assert all_bg.specificity("common", "small", "p1") == pytest.approx(math.log(3.5))
+    assert all_bg.specificity("common", "small", "p1") < filtered.specificity("common", "small", "p1")
+
+
+# "steady" is "mix"'s only word in p1 (trivially passes the cut) but gets filtered out of p2
+# (count 1 vs "big2"'s count 5), so the "filtered" background undercounts its true per-group,
+# across-periods total -- the same artifact as above, but for volatility's background instead.
+VOLATILITY_BACKGROUND_RECORDS = [
+    ("mix", "p1", "m1", ["steady"]),
+    ("mix", "p2", "m1", ["big2"]),
+    ("mix", "p2", "m2", ["big2"]),
+    ("mix", "p2", "m3", ["big2"]),
+    ("mix", "p2", "m4", ["big2"]),
+    ("mix", "p2", "m5", ["big2"]),
+    ("mix", "p2", "m6", ["steady"]),
+]
+
+
+def test_background_all_vs_filtered_volatility():
+    filtered = IdentityMetrics(VOLATILITY_BACKGROUND_RECORDS, min_percentile=50, log_base=math.e, speaker_dedup=True)
+    all_bg = IdentityMetrics(
+        VOLATILITY_BACKGROUND_RECORDS, min_percentile=50, log_base=math.e, speaker_dedup=True, background="all"
+    )
+
+    assert "steady" not in filtered.word_table("mix", "p2")["word"].tolist()
+
+    assert filtered.volatility("steady", "mix", "p1") == pytest.approx(math.log(6))
+    assert all_bg.volatility("steady", "mix", "p1") == pytest.approx(math.log(3.5))
+    assert all_bg.volatility("steady", "mix", "p1") < filtered.volatility("steady", "mix", "p1")
+
+
+def test_invalid_background_raises():
+    with pytest.raises(ValueError):
+        IdentityMetrics(BACKGROUND_RECORDS, background="bogus")
+
+
+def test_ceiling_fraction_in_series():
+    """Every word here is exclusive to its own group's filtered vocabulary -> ceiling_fraction 1.0."""
+    filtered = IdentityMetrics(BACKGROUND_RECORDS, min_percentile=50, log_base=2, speaker_dedup=True)
+    series = filtered.series().set_index(["group", "period"])
+    assert series.loc[("small", "p1"), "ceiling_fraction"] == pytest.approx(1.0)
+    assert series.loc[("big", "p1"), "ceiling_fraction"] == pytest.approx(1.0)
+
+
 # --- Minimal ConvoKit stand-ins for from_corpus tests ---
 
 
@@ -367,6 +439,7 @@ def test_save_params_json_records_full_configuration(tmp_path):
         "min_percentile": 0,
         "log_base": 2,
         "speaker_dedup": True,
+        "background": "filtered",
         "comid_version": __version__,
     }
 
