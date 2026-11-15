@@ -17,7 +17,7 @@ from itertools import chain
 import math
 from collections import Counter, defaultdict
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 
 class Comid:
