@@ -620,7 +620,9 @@ class IdentityMetrics:
             filtered vocabulary of (group, period) exclusive to this group at
             this period under the ``"filtered"`` background -- i.e. words
             whose specificity sits at the group-size-determined ceiling
-            described in ``specificity``'s docstring).
+            described in ``specificity``'s docstring). It is always defined against the
+            filtered vocabularies, so with ``background="all"`` it no longer marks a
+            specificity ceiling and only measures vocabulary exclusivity.
         """
         rows = []
         for group in self._groups:

@@ -21,7 +21,10 @@ Comprehensive documentation is available for each module:
 - [Collector](docs/RedditCollector.md)
 - [Explorer](docs/Explorer.md)
 - [ConvoBridge](docs/ConvoBridge.md)
-- [Conventions](docs/Conventions.md)
+- [Metrics](docs/Metrics.md)
+
+### Conventions:
+How thread depth and `Comid.clean_data` removals are handled across modules: [Conventions](docs/Conventions.md).
 
 ## **Quick Start**
 

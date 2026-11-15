@@ -6,6 +6,11 @@ The reference functions below are a faithful transcription of the notebook's
 code, adapted to read from plain (group, period, author, words) records
 instead of live ConvoKit queries, so the fixture does not depend on the large
 external Reddit dataset used by the notebook.
+
+The transcribed `compute_words` is the HISTORICAL (December draft) algorithm and has two
+deduplication errors (see `_notebook_compute_words`). The fixtures in this module are built so that
+neither error is triggered, which is why the historical algorithm is a valid oracle here;
+tests/test_spec_fixture.py holds the fixture that does trigger them.
 """
 
 import json
@@ -23,7 +28,19 @@ from comid.metrics import IdentityMetrics
 
 
 def _notebook_compute_words(records, group, period, percentile=95):
-    """Port of the notebook's `compute_words(community, period)`."""
+    """Port of the notebook's `compute_words(community, period)` -- the HISTORICAL algorithm.
+
+    Kept exactly as it was in the December draft, including its two deduplication errors:
+    1. `speakers[author] = set(words)` replaces the author's word set instead of accumulating it, so
+       a word the author used, then skipped for a different word, then used again is re-counted.
+    2. The filter compares against the author's set as it was BEFORE the current record, so a word
+       repeated inside one record is counted once per repetition.
+
+    The fixtures in this module never trigger either error (no author has three records in one
+    (group, period) that revisit an earlier word, and no record repeats a word), so this function
+    agrees with the specified deduplication on them. IdentityMetrics implements the specified
+    deduplication (a word counts once per distinct author per (group, period)).
+    """
     word_map = {}
     speakers = {}
     for rec_group, rec_period, author, words in records:
